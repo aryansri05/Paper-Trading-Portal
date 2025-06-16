@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
-import { supabase } from "./supabaseClient"; // Ensure this path is correct
+import { Link } from "react-router-dom";
+import axios from "axios"; 
+import { supabase } from "./supabaseClient"; 
 import {
   BarChart,
   Bar,
@@ -11,208 +12,165 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
+  LineChart,
+  Line,
 } from "recharts";
+import { useTradingData } from "./TradingDataContext";
 
-// IMPORTANT: Replace with your actual Finnhub API Key from finnhub.io
-// This key is for demonstration. For broader real-time data, you might need a paid plan.
-const FINNHUB_API_KEY = "d108911r01qhkqr8ggb0d108911r01qhkqr8ggbg"; // <--- YOUR NEW API KEY IS HERE
+function TradingDashboard({ user }) { // Keep user prop for initial debugging, but TradingDataContext will provide it
+  const {
+    trades,
+    livePrices,
+    capital,
+    setCapital, // This now comes from TradingDataContext and updates Supabase
+    availableSymbols,
+    symbolError,
+    setSymbolError,
+    fetchTrades,
+    fetchLivePrices,
+    calculatePnL,
+    isInvalidApiKey,
+    FINNHUB_API_KEY,
+    CURRENCY_SYMBOL,
+    loadingData,
+  } = useTradingData(); // <--- Get everything from useTradingData
 
-// Helper to check for placeholder or dummy API keys
-const isInvalidApiKey = (key) => {
-  return !key ||
-         key === "YOUR_FINNHUB_API_KEY" || // Generic placeholder
-         key === "d0uaoehr01qn5fk47mdgd0uaoehr01qn5fk47me0" || // Original placeholder
-         key === "d0uv0tpr01qmg3uj77qgd0uv0tpr01qmg3uj77r0" || // Common dummy key 1
-         key === "d0uvgepr01qmg3uj9ug0d0uvgepr01qmg3uj9ugg" || // Common dummy key 2
-         key === "d0vlu8hr01qkepd13dpgd0vlu8hr01qkepd13dq0"; // Previous provided key
-         // The line below is COMMENTED OUT to allow your current key to attempt API calls.
-         // Remember, this only bypasses your app's warning, not Finnhub's actual free-tier limits.
-         // key === "d108911r01qhkqr8ggb0d108911r01qhkqr8ggbg"; // Your newly provided key (still free-tier likely)
-};
+  const [form, setForm] = useState({ symbol: "", quantity: "", type: "buy" });
 
-const CURRENCY_SYMBOL = "$"; // Changed to USD symbol for US market stocks
+  // --- NEW STATE FOR STOCK INFO ---
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [quoteDetails, setQuoteDetails] = useState(null);
+  const [historicalChartData, setHistoricalChartData] = useState([]);
+  const [stockInfoLoading, setStockInfoLoading] = useState(false);
+  const [stockInfoError, setStockInfoError] = useState(null);
+  // --- END NEW STATE ---
 
-function TradingDashboard({ user }) { // user prop comes from App.js
-  // Log the received user prop for debugging when component mounts or user changes
   useEffect(() => {
-    console.log("TradingDashboard mounted or user prop changed. User:", JSON.stringify(user, null, 2));
+    // The user object is now available from useTradingData, so this console log might fire differently.
+    // console.log("TradingDashboard mounted or user prop changed. User:", JSON.stringify(user, null, 2));
   }, [user]);
 
-  const [trades, setTrades] = useState([]);
-  const [livePrices, setLivePrices] = useState({});
-  const [form, setForm] = useState({ symbol: "", quantity: "", type: "buy" });
-  const [capital, setCapital] = useState(() => {
-    // Ensure user and user.id exist before trying to access localStorage
-    const userId = user?.id;
-    if (userId) {
-      const saved = localStorage.getItem("capital_" + userId);
-      return saved ? Number(saved) : 100000; // Default capital in USD ($100,000)
-    }
-    return 100000; // Default if no user.id (should ideally not happen if App.js guards this)
-  });
-  const [availableSymbols, setAvailableSymbols] = useState([]); // Stores list of supported US stock symbols
-  const [symbolError, setSymbolError] = useState(""); // For displaying errors related to symbols/API key
+  // console.log("TradingDashboard rendering - User prop received:", user); // Commented out to reduce console spam
+  // console.log("TradingDashboard loadingData:", loadingData); // Commented out to reduce console spam
 
-  // Effect to fetch the list of available US stock symbols from Finnhub
+  // Effect to fetch live prices for the symbol in the form, with a debounce
   useEffect(() => {
-    const fetchAvailableSymbols = async () => {
-      // The `isInvalidApiKey` check below will now return `false` for your current key,
-      // allowing the API call to proceed.
-      if (isInvalidApiKey(FINNHUB_API_KEY)) {
-        console.error("Cannot fetch symbols: Invalid Finnhub API Key detected. Please provide a valid key.");
-        setSymbolError(
-          "Could not fetch available symbols. Please set a valid Finnhub API Key in the code."
-        );
-        setAvailableSymbols([]); // Clear any previous symbols
+    // Only fetch if symbol is new, not already in livePrices, and not globally loading
+    if (form.symbol && !livePrices[form.symbol.toUpperCase()] && !loadingData) {
+      const handler = setTimeout(() => {
+        fetchLivePrices([form.symbol.toUpperCase()]);
+      }, 500);
+
+      return () => {
+        clearTimeout(handler);
+      };
+    }
+  }, [form.symbol, livePrices, loadingData, fetchLivePrices]);
+
+  // --- NEW useEffect for fetching detailed stock info and historical data ---
+  useEffect(() => {
+    const fetchStockDetails = async () => {
+      const symbol = form.symbol.toUpperCase();
+      if (!symbol || isInvalidApiKey(FINNHUB_API_KEY)) {
+        setCompanyProfile(null);
+        setQuoteDetails(null);
+        setHistoricalChartData([]); // This should still run
+        setStockInfoError(null);
         return;
       }
+
+      setStockInfoLoading(true);
+      setStockInfoError(null); // Clear previous errors
+
       try {
-        console.log("Fetching available US market symbols from Finnhub...");
-        // Fetch symbols specifically for the US exchange
-        const res = await axios.get(
-          `https://finnhub.io/api/v1/stock/symbol?exchange=US&token=${FINNHUB_API_KEY}`
+        // Fetch Company Profile 2
+        const profileResponse = await axios.get(
+          `https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${FINNHUB_API_KEY}`
         );
-        if (res.data && Array.isArray(res.data)) {
-          // Filter for common stocks and map to their display symbol
-          const symbols = res.data
-            .filter(
-              (s) =>
-                s.type === "Common Stock" &&
-                s.displaySymbol &&
-                s.symbol // Ensure symbol is also present
-            )
-            .map((s) => s.displaySymbol.toUpperCase()); // Convert to uppercase for consistency
-          setAvailableSymbols(symbols);
-          console.log(`Fetched ${symbols.length} US market symbols.`);
-          if (symbols.length === 0) {
-            setSymbolError("No US market symbols found. Check API key permissions or Finnhub US data coverage.");
-          } else {
-            setSymbolError(""); // Clear error if symbols are fetched
-          }
+        // Only set data if response is valid (not empty object or error from API)
+        if (profileResponse.data && Object.keys(profileResponse.data).length > 0) {
+          setCompanyProfile(profileResponse.data);
         } else {
-          console.warn("No symbols returned or unexpected format from Finnhub for US market:", res.data);
-          setSymbolError("Could not fetch symbols: No data or unexpected format from API for US market.");
-          setAvailableSymbols([]);
+          setCompanyProfile(null); // No profile data
         }
-      } catch (err) {
-        console.error("Error fetching available US symbols:", err.message, err.response?.data);
-        setSymbolError(
-          `Could not fetch available US symbols: ${err.message}. Check API key, network, and API limits.`
+
+        // Fetch Quote (Daily Summary)
+        const quoteResponse = await axios.get(
+          `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`
         );
-        setAvailableSymbols([]);
-      }
-    };
-    fetchAvailableSymbols();
-  }, []); // Runs once on component mount
-
-  // Effect to fetch user's trade history from Supabase
-  useEffect(() => {
-    // Fetch trades only if user and user.id are valid and not a placeholder
-    if (user && user.id && typeof user.id === 'string' && user.id.includes('-') && !user.id.startsWith("dummy-user-id")) {
-        fetchTrades();
-    } else if (user && user.id) {
-        console.warn("fetchTrades skipped: user.id might be invalid or a placeholder:", user.id);
-    }
-  }, [user]); // Re-fetch trades when the user object changes
-
-  // Effect to fetch live prices for traded/entered symbols
-  useEffect(() => {
-    // This `isInvalidApiKey` check will also now allow the API call to proceed for live prices.
-    if (isInvalidApiKey(FINNHUB_API_KEY)) {
-      if (!symbolError.includes("API Key")) { // Only update error if it's not already about API key
-        setSymbolError("Live price updates paused: Please set a valid Finnhub API Key.");
-      }
-      return; // Stop execution if API key is invalid
-    }
-
-    // Combine symbols from existing trades and the current form input
-    const symbolsFromTrades = trades.map((t) => t.symbol.toUpperCase());
-    const symbolFromForm = form.symbol ? [form.symbol.toUpperCase()] : [];
-    
-    // Get unique symbols to fetch prices for
-    const uniqueSymbols = [...new Set([...symbolsFromTrades, ...symbolFromForm])];
-    const symbolsToFetch = uniqueSymbols.filter((s) => !!s); // Filter out empty strings
-
-    if (symbolsToFetch.length === 0) {
-        return; // No symbols to fetch, exit early
-    }
-    
-    const fetchPrices = async () => {
-      // console.log("Fetching prices for US symbols:", symbolsToFetch); // Can be noisy for frequent updates
-      const currentPricesBatch = {};
-
-      for (const sym of symbolsToFetch) {
-        try {
-          const res = await axios.get(
-            `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FINNHUB_API_KEY}`
-          );
-          // Check if price (c) is a valid number and not zero (Finnhub often returns 0 for non-tradable/unsupported/rate-limited symbols)
-          if (res.data && typeof res.data.c === 'number' && res.data.c > 0) { 
-            currentPricesBatch[sym] = res.data.c;
-          } else {
-            // Log a warning if price data is invalid/missing for a symbol
-            console.warn(`No valid price data for US symbol ${sym}. Finnhub response:`, res.data);
-          }
-        } catch (err) {
-          console.error("Error fetching price for US symbol", sym, err.message);
+        // Only set data if response is valid (check 'c' for current price usually means valid quote)
+        if (quoteResponse.data && quoteResponse.data.c) {
+          setQuoteDetails(quoteResponse.data);
+        } else {
+          setQuoteDetails(null); // No quote data
         }
-      }
 
-      // Update livePrices state if any valid prices were fetched in this batch
-      if (Object.keys(currentPricesBatch).length > 0) {
-        setLivePrices((prevPrices) => ({ ...prevPrices, ...currentPricesBatch }));
+        // --- START: COMMENTED OUT HISTORICAL DATA FETCH DUE TO FREE-TIER LIMITATIONS ---
+        // The free Finnhub API key typically does not support daily historical candlestick data
+        // for longer periods, even for major stocks, often returning a 403 Forbidden error.
+        
+        // const now = Math.floor(Date.now() / 1000); // Current timestamp
+        // const sixMonthsAgo = now - (6 * 30 * 24 * 60 * 60); // Roughly 6 months ago for daily resolution
+        
+        // const candlesResponse = await axios.get(
+        //   `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${sixMonthsAgo}&to=${now}&token=${FINNHUB_API_KEY}`
+        // );
+
+        // // Process historical data for Recharts
+        // if (candlesResponse.data && candlesResponse.data.c && candlesResponse.data.t && candlesResponse.data.c.length > 0) {
+        //   const processedData = candlesResponse.data.t.map((timestamp, index) => ({
+        //     date: new Date(timestamp * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }), // Format date
+        //     price: candlesResponse.data.c[index], // Closing price for simplicity
+        //   }));
+        //   setHistoricalChartData(processedData);
+        // } else {
+        //   setHistoricalChartData([]); // No data or invalid data
+        // }
+        // --- END: COMMENTED OUT HISTORICAL DATA FETCH ---
+
+        // Since historical data fetch is commented out, ensure the state is cleared.
+        setHistoricalChartData([]); 
+
+      } catch (err) {
+        console.error("Error fetching stock info for", symbol, err);
+        setStockInfoError(`Could not fetch detailed info for ${symbol}. This might be due to an invalid symbol, API key limits, or a free-tier API key not supporting advanced data. Please check the symbol and your Finnhub plan.`);
+        setCompanyProfile(null);
+        setQuoteDetails(null);
+        setHistoricalChartData([]); // Ensure this is cleared on any error
+      } finally {
+        setStockInfoLoading(false);
       }
     };
 
-    fetchPrices(); // Fetch prices immediately on effect run
-    // Set up interval for subsequent price fetches (e.g., every 30 seconds)
-    // You can choose 30000 for 30 seconds, or 60000 for 1 minute
-    const interval = setInterval(fetchPrices, 30000); // Changed from 15000 to 30000 ms (30 seconds)
-    
-    return () => clearInterval(interval); // Clean up interval on component unmount or dependencies change
-  }, [trades, form.symbol, FINNHUB_API_KEY, symbolError]); // Dependencies for price fetching
+    // Debounce the fetch to avoid too many API calls as user types
+    const handler = setTimeout(() => {
+      fetchStockDetails();
+    }, 700); 
 
-  // Effect to save capital to localStorage whenever it changes
-  useEffect(() => {
-    // Save capital to localStorage only if user and user.id are valid
-    if (user && user.id && typeof user.id === 'string' && user.id.includes('-') && !user.id.startsWith("dummy-user-id")) {
-        localStorage.setItem("capital_" + user.id, capital.toString());
-    }
-  }, [capital, user]); // Capital and user are dependencies
+    return () => clearTimeout(handler); // Cleanup on component unmount or dependency change
 
-  // Function to fetch trades for the current user from Supabase
-  const fetchTrades = async () => {
-    const { data, error } = await supabase
-      .from("trades")
-      .select("*")
-      .eq("user_id", user.id) // Filter trades by the current user's ID
-      .order("created_at", { ascending: true }); // Order by creation time
+  }, [form.symbol, FINNHUB_API_KEY, isInvalidApiKey]); // Dependencies for this effect
+  // --- END NEW useEffect ---
 
-    if (!error) setTrades(data);
-    else console.error("Error fetching trades:", error.message);
-  };
-
-  // Handles input changes for the symbol and quantity form fields
   const handleChange = (e) => {
     let value = e.target.value.toUpperCase();
-    // Allow only alphanumeric characters for the symbol
     if (e.target.name === "symbol") {
       value = value.replace(/[^A-Z0-9]/g, ''); 
     }
     setForm({ ...form, [e.target.name]: value });
   };
 
-  // Centralized function to validate and execute either a buy or sell trade
   const validateAndExecuteTrade = async (type) => {
-    // **Explicit check for valid user and user.id at the start of trade execution**
-    if (!user || !user.id || typeof user.id !== 'string' || !user.id.includes('-') || user.id.startsWith("dummy-user-id")) {
+    // Use the user from useTradingData, not the prop
+    const currentUser = user; // user is now from useTradingData context
+    
+    if (!currentUser || !currentUser.id || typeof currentUser.id !== 'string' || !currentUser.id.includes('-') || currentUser.id.startsWith("dummy-user-id")) {
       alert("User Authentication Error: Cannot execute trade without a valid user session. Please ensure you are logged in correctly.");
-      console.error("Trade rejected: Invalid user object or user ID. User ID:", user ? user.id : "N/A");
+      console.error("Trade rejected: Invalid user object or user ID. User ID:", currentUser ? currentUser.id : "N/A");
       return;
     }
-    console.log(`Attempting ${type} trade for user_id: ${user.id} with symbol: ${form.symbol}`); // Log before execution
+    console.log(`Attempting ${type} trade for user_id: ${currentUser.id} with symbol: ${form.symbol}`); //
 
-    // This `isInvalidApiKey` check will also now allow the API call to proceed for trading.
     if (isInvalidApiKey(FINNHUB_API_KEY)) {
       alert("Trading disabled: Invalid Finnhub API Key. Please update it in the code.");
       return;
@@ -226,7 +184,6 @@ function TradingDashboard({ user }) { // user prop comes from App.js
       return;
     }
 
-    // Validate symbol against the fetched list of available symbols (if the list is populated)
     if (availableSymbols.length > 0 && !availableSymbols.includes(sym)) {
       alert(
         `Symbol '${sym}' is not in the recognized list of US stocks. ` +
@@ -237,7 +194,6 @@ function TradingDashboard({ user }) { // user prop comes from App.js
     }
     
     const price = livePrices[sym];
-    // Check if the price is a valid positive number
     if (typeof price !== 'number' || price <= 0) { 
       alert(
         `Live price for '${sym}' is currently unavailable or invalid. ` +
@@ -247,8 +203,9 @@ function TradingDashboard({ user }) { // user prop comes from App.js
       return;
     }
 
-    // Prepare the trade object with the (now hopefully valid) user.id
-    const trade = { user_id: user.id, symbol: sym, quantity: qty, price, type };
+    const trade = { user_id: currentUser.id, symbol: sym, quantity: qty, price, type }; //
+
+    let newCapital; // Declare newCapital variable
 
     if (type === "buy") {
       const cost = qty * price;
@@ -256,115 +213,112 @@ function TradingDashboard({ user }) { // user prop comes from App.js
         alert("Not enough capital to perform this buy trade.");
         return;
       }
-      // Optimistically update capital (will be reverted if database insert fails)
-      setCapital((c) => c - cost); 
-    } else { // type === "sell"
-      const pnlSummary = calculatePnL(trades); // Re-calculate P&L summary based on current trades
-      const heldStock = pnlSummary.find(s => s.symbol === sym);
-      // Check if the user holds enough quantity to sell
+      newCapital = capital - cost; // Calculate new capital
+      await setCapital(newCapital); // Use the setCapital from context which updates Supabase
+    } else { // Sell trade logic
+      const { holdings: pnlHoldingsForSell } = calculatePnL(trades);
+      const heldStock = pnlHoldingsForSell.find(s => s.symbol === sym);
       if (!heldStock || heldStock.netQty < qty) {
           alert(`You only hold ${heldStock ? heldStock.netQty : 0} of ${sym}. Cannot sell ${qty}.`);
           return;
       }
-      // Optimistically update capital (will be reverted if database insert fails)
-      setCapital((c) => c + qty * price);
+      newCapital = capital + qty * price; // Calculate new capital
+      await setCapital(newCapital); // Use the setCapital from context which updates Supabase
     }
 
-    // Insert the trade into Supabase
-    const { error } = await supabase.from("trades").insert([trade]);
+    const { error } = await supabase.from("trades").insert([trade]); //
 
     if (error) {
       alert("Error executing trade with database: " + error.message);
-      // Revert optimistic capital update if database insert fails
+      // Revert capital locally if trade insertion failed in DB
+      // The setCapital function already handles the DB update, so just revert the local state
       if (type === "buy") {
-        setCapital((c) => c + (qty * price)); // Add back the cost if buy failed
-      } else { // Sell
-        setCapital((c) => c - (qty * price)); // Subtract back the proceeds if sell failed
+        setCapital(capital + (qty * price)); // Revert to old capital
+      } else {
+        setCapital(capital - (qty * price)); // Revert to old capital
       }
       return;
     }
 
-    setForm({ ...form, quantity: "" }); // Clear quantity after successful trade
-    fetchTrades(); // Refresh trades list to show the new trade
-    setSymbolError(""); // Clear any previous symbol-related errors
+    setForm({ ...form, quantity: "" });
+    fetchTrades();
+    setSymbolError("");
   };
 
   const handleBuy = () => validateAndExecuteTrade("buy");
   const handleSell = () => validateAndExecuteTrade("sell");
 
-  // Handles user logout
   const handleLogout = async () => {
-    if (!user || !user.id) return; // Should ideally not be called if user is not present
-    console.log("Logging out user:", user.id);
-    const { error } = await supabase.auth.signOut();
+    // Use the user from useTradingData context
+    const currentUser = user;
+    if (!currentUser || !currentUser.id) return;
+    console.log("Logging out user:", currentUser.id); //
+    const { error } = await supabase.auth.signOut(); //
     if (error) {
-        console.error("Error logging out:", error.message);
-        alert("Logout failed: " + error.message);
+        console.error("Error logging out:", error.message); //
+        alert("Logout failed: " + error.message); //
     } else {
-        // App.js's onAuthStateChange listener will detect the SIGNED_OUT event
-        // and handle the UI update (e.g., redirect to login page).
-        console.log("User successfully logged out.");
+        console.log("User successfully logged out."); //
     }
   };
 
-  // Calculates Profit & Loss and net quantity for each symbol
-  const calculatePnL = (currentTrades) => {
-    const summary = {};
-    currentTrades.forEach(({ symbol, quantity, price, type }) => {
-      const s = symbol.toUpperCase();
-      if (!summary[s]) {
-        summary[s] = { buyQty: 0, buyTotal: 0, sellQty: 0, sellTotal: 0, netQty: 0 };
-      }
-      const q = Number(quantity);
-      const p = Number(price);
+  const { holdings: holdingsData } = calculatePnL(trades);
 
-      if (type === "buy") {
-        summary[s].buyQty += q;
-        summary[s].buyTotal += q * p;
-        summary[s].netQty += q; // Increase net quantity on buy
-      } else { // type === "sell"
-        summary[s].sellQty += q;
-        summary[s].sellTotal += q * p;
-        summary[s].netQty -= q; // Decrease net quantity on sell
-      }
-    });
-
-    return Object.entries(summary).map(([symbol, data]) => {
-      const avgBuy = data.buyQty > 0 ? data.buyTotal / data.buyQty : 0;
-      // Calculate realized profit from sold shares
-      const costOfSoldShares = avgBuy * data.sellQty;
-      const profit = data.sellTotal - costOfSoldShares;
-
-      return {
-        symbol,
-        netQty: data.netQty, // Current quantity held
-        avgBuyPrice: avgBuy.toFixed(2),
-        profit: profit.toFixed(2), // Realized profit/loss
-      };
-    });
-  };
-
-  const pnlData = calculatePnL(trades); // Get current P&L data
+  if (loadingData) {
+    return (
+      <div className="spinner-container" style={{ textAlign: 'center', marginTop: '50px', fontSize: '20px' }}>
+        <div className="spinner"></div>
+        <p className="spinner-text">Loading trading dashboard data...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "1rem 2rem", fontFamily: "Arial", maxWidth: 900, margin: "auto", backgroundColor: '#f9f9f9', borderRadius: '8px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-      <h1 style={{ textAlign: 'center', color: '#333' }}>📈 Paper Trading Dashboard (US Market)</h1>
+      <h1 style={{ textAlign: 'center', color: '#333' }}>
+        <span role="img" aria-label="chart with increasing trend">📈</span> Paper Trading Dashboard (US Market)
+      </h1>
+      <pre style={{ 
+        backgroundColor: '#eee', 
+        padding: '10px', 
+        margin: '1rem 0',
+        border: '1px solid black', 
+        whiteSpace: 'pre-wrap', 
+        wordBreak: 'break-all' 
+      }}>
+        <strong>DEBUG INFO:</strong><br />
+        Is 'user' truthy? <strong>{user ? 'Yes' : 'No'}</strong><br />
+        user.id: <strong>{user?.id ?? 'Not Available'}</strong><br />
+        user.email: <strong>{user?.email ?? 'Not Available'}</strong>
+      </pre>
+
       { user && user.email && <p style={{ textAlign: 'center', color: '#555', marginBottom: '1rem' }}>Logged in as: {user.email} (ID: {user.id})</p> } 
       <p style={{ fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center', color: '#007bff' }}>Capital: {CURRENCY_SYMBOL}{capital.toFixed(2)}</p>
       
       {user && (
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <button onClick={handleLogout} style={{ padding: '10px 20px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem', transition: 'background-color 0.2s' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem', display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+          <Link to="/portfolio" style={{
+            padding: '10px 20px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            textDecoration: 'none',
+            transition: 'background-color 0.2s'
+          }}>
+            View Portfolio
+          </Link>
+          <button onClick={handleLogout} style={{ padding: '10px 20px', backgroundColor: '#dc3545', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px', fontSize: '1rem', fontWeight: 'bold', transition: 'background-color 0.2s' }}>
             Logout
           </button>
         </div>
       )}
 
-      {/* The warning message will still show because isInvalidApiKey checks for general placeholders.
-          However, your specific key is now allowed to attempt API calls. */}
       {isInvalidApiKey(FINNHUB_API_KEY) && (
         <p style={{ color: "red", fontWeight: "bold", border: "1px solid red", padding: "0.8rem", margin: "1.5rem 0", backgroundColor: '#ffe6e6', borderRadius: '5px' }}>
-          ⚠️ WARNING: A valid Finnhub API Key is not set in `TradingDashboard.js` or your current key is a free-tier key. 
+          <span role="img" aria-label="warning sign">⚠️</span> WARNING: A valid Finnhub API Key is not set in `TradingDataContext.js` or your current key is a free-tier key. 
           Symbol list loading, live prices, and full trading functionality may not work correctly or may be severely limited.
           Please consider upgrading your Finnhub plan for broader access.
         </p>
@@ -401,7 +355,76 @@ function TradingDashboard({ user }) { // user prop comes from App.js
         <button type="button" onClick={handleSell} style={{ flex: '0 0 80px', padding: "10px 15px", backgroundColor: "#dc3545", color: "white", border: "none", cursor: "pointer", borderRadius: "5px", fontSize: "1rem", fontWeight: "bold", transition: 'background-color 0.2s' }}>Sell</button>
       </form>
 
-      {symbolError && <p style={{ color: "red", marginTop: "0.5rem", padding: "0.8rem", border: "1px dashed red", backgroundColor: '#ffe6e6', borderRadius: '5px' }}>⚠️ {symbolError}</p>}
+      {symbolError && <p style={{ color: "red", marginTop: "0.5rem", padding: "0.8rem", border: "1px dashed red", backgroundColor: '#ffe6e6', borderRadius: '5px' }}>
+        <span role="img" aria-label="warning sign">⚠️</span> {symbolError}
+      </p>}
+
+      {/* NEW SECTION: SELECTED STOCK INFORMATION & HISTORY */}
+      {form.symbol && ( // Only show this section if a symbol is typed
+        <div style={{ marginTop: '2rem', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#fff' }}>
+          <h2 style={{ color: '#333', marginBottom: '1rem' }}>
+            Information for: {form.symbol.toUpperCase()} {livePrices[form.symbol.toUpperCase()] ? `(${CURRENCY_SYMBOL}${livePrices[form.symbol.toUpperCase()].toFixed(2)})` : ''}
+          </h2>
+
+          {/* Updated Loading Indicator for stock info */}
+          {stockInfoLoading && (
+            <div className="spinner-container">
+              <div className="spinner"></div>
+              <p className="spinner-text">Loading stock details...</p>
+            </div>
+          )}
+          {/* End Updated Loading Indicator */}
+
+          {stockInfoError && <p style={{ color: "red", border: "1px dashed red", padding: "0.8rem", borderRadius: "5px", backgroundColor: '#ffe6e6' }}>
+            <span role="img" aria-label="error">❌</span> {stockInfoError}
+          </p>}
+
+          {!stockInfoLoading && !stockInfoError && companyProfile && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Company Profile</h3>
+              <p><strong>Name:</strong> {companyProfile.name || 'N/A'}</p>
+              <p><strong>Exchange:</strong> {companyProfile.exchange || 'N/A'}</p>
+              <p><strong>Industry:</strong> {companyProfile.finnhubIndustry || 'N/A'}</p>
+              <p><strong>IPO Date:</strong> {companyProfile.ipo || 'N/A'}</p>
+              <p><strong>Market Cap:</strong> {companyProfile.marketCapitalization ? `${CURRENCY_SYMBOL}${companyProfile.marketCapitalization.toFixed(2)}B` : 'N/A'}</p>
+              {companyProfile.weburl && <p><strong>Website:</strong> <a href={companyProfile.weburl} target="_blank" rel="noopener noreferrer">{companyProfile.weburl}</a></p>}
+            </div>
+          )}
+
+          {!stockInfoLoading && !stockInfoError && quoteDetails && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Daily Quote</h3>
+              <p><strong>Open:</strong> {quoteDetails.o ? `${CURRENCY_SYMBOL}${quoteDetails.o.toFixed(2)}` : 'N/A'}</p>
+              <p><strong>High:</strong> {quoteDetails.h ? `${CURRENCY_SYMBOL}${quoteDetails.h.toFixed(2)}` : 'N/A'}</p>
+              <p><strong>Low:</strong> {quoteDetails.l ? `${CURRENCY_SYMBOL}${quoteDetails.l.toFixed(2)}` : 'N/A'}</p>
+              <p><strong>Previous Close:</strong> {quoteDetails.pc ? `${CURRENCY_SYMBOL}${quoteDetails.pc.toFixed(2)}` : 'N/A'}</p>
+              <p><strong>Change:</strong> <span style={{ color: quoteDetails.d >= 0 ? "green" : "red" }}>{quoteDetails.d ? `${CURRENCY_SYMBOL}${quoteDetails.d.toFixed(2)}` : 'N/A'}</span></p>
+              <p><strong>Percent Change:</strong> <span style={{ color: quoteDetails.dp >= 0 ? "green" : "red" }}>{quoteDetails.dp ? `${quoteDetails.dp.toFixed(2)}%` : 'N/A'}</span></p>
+            </div>
+          )}
+
+          {!stockInfoLoading && !stockInfoError && historicalChartData.length > 0 ? (
+            <div>
+              <h3 style={{ color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>6-Month Price History</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={historicalChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" interval={Math.floor(historicalChartData.length / 5)} />
+                  <YAxis domain={['dataMin', 'dataMax']} tickFormatter={(value) => `${CURRENCY_SYMBOL}${value.toFixed(2)}`}/>
+                  <Tooltip 
+                    formatter={(value) => [`${CURRENCY_SYMBOL}${Number(value).toFixed(2)}`, 'Close Price']}
+                    labelFormatter={(label) => `Date: ${label}`}
+                  />
+                  <Legend />
+                  <Line type="monotone" dataKey="price" stroke="#8884d8" dot={false} activeDot={{ r: 8 }} name="Close Price" />
+                </LineChart>
+              </ResponsiveContainer>
+              <p style={{textAlign: 'center', fontSize: '0.9em', color: '#777'}}>Showing daily close prices for the last 6 months.</p>
+            </div>
+          ) : !stockInfoLoading && !stockInfoError && <p style={{ color: '#666' }}>No historical data available for this symbol.</p>}
+        </div>
+      )}
+      {/* END NEW SECTION */}
 
       <h2 style={{ color: '#333', marginTop: '2rem', marginBottom: '1rem' }}>Live Prices (US Stocks)</h2>
       {Object.keys(livePrices).filter(sym => livePrices[sym] !== null && typeof livePrices[sym] === 'number' && livePrices[sym] > 0).length > 0 ? (
@@ -444,50 +467,54 @@ function TradingDashboard({ user }) { // user prop comes from App.js
         </table>
       ) : (<p style={{ color: '#666', border: '1px dashed #ccc', padding: '1rem', borderRadius: '5px', backgroundColor: '#fff' }}>No trades made yet.</p>)}
 
-      <h2 style={{ color: '#333', marginTop: '2rem', marginBottom: '1rem' }}>Holdings & Profit/Loss (Realized)</h2>
-      {pnlData.length > 0 ? ( 
+      <h2 style={{ color: '#333', marginTop: '2rem', marginBottom: '1rem' }}>Holdings & Profit/Loss (Live)</h2>
+      {/* Ensure holdingsData is an array before filtering */}
+      {holdingsData.filter(row => row.netQty > 0).length > 0 ? ( 
         <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "2rem", border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}>
           <thead style={{backgroundColor: "#eef", color: '#333'}}>
             <tr>
               <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Symbol</th>
               <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Net Qty Held</th>
               <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Avg. Buy Price</th>
-              <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Realized P&L</th>
+              <th style={{ padding: '12px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Live P&L</th>
             </tr>
           </thead>
           <tbody>
-            {pnlData.map((row) => (
-              <tr key={row.symbol} style={{ backgroundColor: parseFloat(row.profit) >= 0 ? '#e6ffe6' : '#ffe6e6' }}>
+            {holdingsData.filter(row => row.netQty > 0).map((row) => (
+              <tr key={row.symbol} style={{ backgroundColor: parseFloat(row.unrealizedPnl) >= 0 ? '#e6ffe6' : '#ffe6e6' }}>
                 <td style={{ padding: '12px', borderBottom: '1px solid #eee' }}>{row.symbol}</td>
                 <td style={{ padding: '12px', borderBottom: '1px solid #eee' }}>{row.netQty}</td>
                 <td style={{ padding: '12px', borderBottom: '1px solid #eee' }}>{CURRENCY_SYMBOL}{row.avgBuyPrice}</td>
-                <td style={{ padding: '12px', borderBottom: '1px solid #eee', color: parseFloat(row.profit) >= 0 ? "green" : "red", fontWeight: 'bold' }}>{CURRENCY_SYMBOL}{row.profit}</td>
+                <td style={{ padding: '12px', borderBottom: '1px solid #eee', color: parseFloat(row.unrealizedPnl) >= 0 ? "green" : "red", fontWeight: 'bold' }}>
+                  {CURRENCY_SYMBOL}{row.unrealizedPnl}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-      ) : (<p style={{ color: '#666', border: '1px dashed #ccc', padding: '1rem', borderRadius: '5px', backgroundColor: '#fff' }}>No current holdings or realized P&L to display.</p>)}
+      ) : (<p style={{ color: '#666', border: '1px dashed #ccc', padding: '1rem', borderRadius: '5px', backgroundColor: '#fff' }}>No current holdings or live P&L to display.</p>)}
 
-      <h2 style={{ color: '#333', marginTop: '2rem', marginBottom: '1rem' }}>P&L Chart (Realized)</h2>
-      {pnlData.filter(p => parseFloat(p.profit) !== 0).length > 0 ? (
+      <h2 style={{ color: '#333', marginTop: '2rem', marginBottom: '1rem' }}>P&L Chart (Live)</h2>
+      {/* Ensure holdingsData is an array before filtering */}
+      {holdingsData.filter(p => parseFloat(p.unrealizedPnl) !== 0).length > 0 ? (
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={pnlData.filter(p => parseFloat(p.profit) !== 0)} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}> 
+          <BarChart data={holdingsData.filter(p => parseFloat(p.unrealizedPnl) !== 0)} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}> 
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="symbol" />
             <YAxis tickFormatter={(value) => `${CURRENCY_SYMBOL}${value}`}/>
             <Tooltip 
-              formatter={(value) => [`${CURRENCY_SYMBOL}${Number(value).toFixed(2)}`, 'Realized P&L']}
+              formatter={(value) => [`${CURRENCY_SYMBOL}${Number(value).toFixed(2)}`, 'Live P&L']}
               labelFormatter={(label) => `Symbol: ${label}`}
             />
             <Legend />
-            <Bar dataKey="profit" name="Realized P&L">
-              {pnlData.filter(p => parseFloat(p.profit) !== 0).map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={parseFloat(entry.profit) >= 0 ? "#4caf50" : "#f44336"} />
+            <Bar dataKey="unrealizedPnl" name="Live P&L">
+              {holdingsData.filter(p => parseFloat(p.unrealizedPnl) !== 0).map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={parseFloat(entry.unrealizedPnl) >= 0 ? "#4caf50" : "#f44336"} />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-      ) : (<p style={{ color: '#666', border: '1px dashed #ccc', padding: '1rem', borderRadius: '5px', backgroundColor: '#fff' }}>No realized P&L to chart.</p>)}
+      ) : (<p style={{ color: '#666', border: '1px dashed #ccc', padding: '1rem', borderRadius: '5px', backgroundColor: '#fff' }}>No live P&L to chart.</p>)}
     </div>
   );
 }
