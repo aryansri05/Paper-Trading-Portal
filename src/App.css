@@ -1,38 +1,74 @@
+/* src/App.css */
+
+/* General App styling */
 .App {
-  text-align: center;
+  font-family: Arial, sans-serif;
+  color: #333;
+  /* Removed text-align: center; as it's often overridden by flexbox for specific layouts */
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+/* Loading state styling */
+.loading-container {
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #f0f2f5; /* Light background for the loading screen */
+  font-size: 20px;
+  color: #555;
 }
 
-.App-link {
-  color: #61dafb;
+/* Basic spinner for loading */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #007bff; /* Primary brand color */
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+
+/* --- Authentication Page Styling --- */
+.auth-page-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh; /* Takes full viewport height */
+  background: linear-gradient(135deg, #e0f2f7 0%, #c1dce7 100%); /* Subtle gradient background */
+  padding: 20px; /* Add some padding for smaller screens */
+  box-sizing: border-box; /* Include padding in element's total width and height */
+}
+
+.auth-card {
+  background-color: #ffffff; /* White background for the card */
+  padding: 40px;
+  border-radius: 12px; /* More rounded corners */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); /* More pronounced shadow */
+  width: 100%;
+  max-width: 420px; /* Slightly wider card */
+  text-align: center;
+  display: flex; /* Use flex for internal layout */
+  flex-direction: column;
+  align-items: center; /* Center items horizontally within the card */
+}
+
+.auth-logo {
+  max-width: 180px; /* Larger logo */
+  height: auto;
+  margin-bottom: 25px; /* More space below logo */
+}
+
+.auth-title {
+  color: #2c3e50; /* Darker heading color */
+  margin-bottom: 30px; /* Space below title */
+  font-size: 1.8em; /* Slightly larger title */
+  font-weight: 600; /* Bolder title */
 }

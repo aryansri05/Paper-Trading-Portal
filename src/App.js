@@ -4,11 +4,14 @@ import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Switch, Route, Redirect } from 'react-router-dom';
 import { supabase } from "./supabaseClient";
 
-import AuthForm from "./AuthForm";
+import AuthForm from "./AuthForm"; // Your existing AuthForm component
 import TradingDashboard from "./TradingDashboard";
 import PortfolioPage from "./PortfolioPage";
 import { TradingDataProvider } from "./TradingDataContext";
-import './App.css';
+import './App.css'; // Your main application CSS
+
+// Import your logo image (adjust path if needed)
+import MyTradingPortalLogo from './images/my-trading-portal-logo.png'; 
 
 function App() {
   const [user, setUser] = useState(null);
@@ -42,8 +45,9 @@ function App() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', marginTop: '50px', fontSize: '20px' }}>
-        Loading Session...
+      <div className="loading-container"> {/* Apply modern loading styles */}
+        <div className="spinner"></div> {/* Basic spinner placeholder */}
+        <p>Loading Session...</p>
       </div>
     );
   }
@@ -51,30 +55,32 @@ function App() {
   return (
     <Router>
       <div className="App">
-        {/* Use Switch instead of Routes for v5 */}
         <Switch>
           {user ? (
             // --- Authenticated Routes ---
-            // If a user object exists, render the TradingDataProvider and its routes
-            // Use 'render' prop to pass user to TradingDashboard and wrap with context
             <Route path={["/dashboard", "/portfolio", "/"]} render={() => (
               <TradingDataProvider user={user}>
-                {/* Nested Switch for authenticated routes */}
                 <Switch>
                   <Route path="/dashboard" render={(props) => <TradingDashboard {...props} user={user} />} />
                   <Route path="/portfolio" component={PortfolioPage} />
-                  {/* Default redirect for authenticated users if they hit "/" or any other unhandled path */}
                   <Redirect to="/dashboard" />
                 </Switch>
               </TradingDataProvider>
             )} />
           ) : (
-            // --- Unauthenticated Route ---
-            // If no user, all paths lead to the login form
-            // Ensure AuthForm is the only unauthenticated route and has a specific path like "/login"
-            // Then redirect to it.
+            // --- Unauthenticated Route (Login/Signup Page) ---
+            // Wrap the AuthForm in a container for styling the whole auth page
             <>
-              <Route path="/login" component={AuthForm} />
+              <Route path="/login" render={(props) => (
+                <div className="auth-page-container">
+                  <div className="auth-card">
+                    {/* Logo displayed above the AuthForm */}
+                    <img src={MyTradingPortalLogo} alt="My Trading Portal Logo" className="auth-logo" />
+                    <h2 className="auth-title">Welcome to My Trading Portal</h2>
+                    <AuthForm {...props} /> {/* Your AuthForm component */}
+                  </div>
+                </div>
+              )} />
               {/* Redirect any other path to login if not authenticated */}
               <Redirect to="/login" />
             </>
