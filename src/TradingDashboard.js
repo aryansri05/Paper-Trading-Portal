@@ -1,7 +1,18 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react"; // Removed useCallback as it's not used in this component's functions
 import { Link } from "react-router-dom";
-import axios from "axios";
-import { supabase } from "./supabaseClient";
+// REMOVED: axios as it's not directly used for API calls within this component anymore
+// as fetchLivePrices and other data fetching functions are in TradingDataContext.js
+// and are called via useTradingData hook.
+// import axios from "axios"; 
+
+// MODIFIED: Import isInvalidApiKey, FINNHUB_API_KEY, and CURRENCY_SYMBOL directly
+import {
+  useTradingData,
+  isInvalidApiKey,       // <--- ADDED THIS
+  FINNHUB_API_KEY,      // <--- ADDED THIS
+  CURRENCY_SYMBOL,      // <--- ADDED THIS
+} from "./TradingDataContext";
+
 import {
   BarChart,
   Bar,
@@ -12,13 +23,9 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
-  LineChart,
-  Line,
 } from "recharts";
-import { useTradingData } from "./TradingDataContext"; // Import the custom hook
 
-// Import the new CSS file for Dashboard
-import './TradingDashboard.css'; // Make sure this path is correct
+import './TradingDashboard.css';
 
 function TradingDashboard() {
   // Destructure states and functions from the custom context hook
@@ -30,37 +37,29 @@ function TradingDashboard() {
     setCapital,
     availableSymbols,
     symbolError,
-    setSymbolError,
     fetchTrades,
     fetchLivePrices,
     calculatePnL,
-    calculateTotalPortfolioValue, // Make sure this is destructured
-    isInvalidApiKey,
-    FINNHUB_API_KEY,
-    CURRENCY_SYMBOL,
+    calculateTotalPortfolioValue,
+    // REMOVED: isInvalidApiKey, FINNHUB_API_KEY, CURRENCY_SYMBOL from useTradingData destructuring
+    // They are now imported directly above.
     loadingData,
     removeTrade,
-    watchListSymbols, // <-- NEW: Watchlist symbols from context <-- ADD THIS
-    addToWatchlist,   // <-- NEW: Function to add to watchlist <-- ADD THIS
-    removeFromWatchlist, // <-- NEW: Function to remove from watchlist <-- ADD THIS
-  } = useTradingData();
+    watchListSymbols,
+    addToWatchlist,
+    removeFromWatchlist,
+  } = useTradingData(); // <--- This line is now correct for context values
 
   const [form, setForm] = useState({ symbol: "", quantity: "", type: "buy" });
-  const [tradeMessage, setTradeMessage] = useState(null); // For trade success messages
-  const [tradeError, setTradeError] = useState(null);   // For trade error messages
-  const [watchlistInput, setWatchlistInput] = useState(""); // NEW: State for watchlist input <-- ADD THIS
-  const [watchlistMessage, setWatchlistMessage] = useState(null); // NEW: Watchlist success/error message <-- ADD THIS
-
-  // --- States for detailed stock information section ---
-  const [companyProfile, setCompanyProfile] = useState(null);
-  const [quoteDetails, setQuoteDetails] = useState(null);
-  const [historicalChartData, setHistoricalChartData] = useState([]);
-  const [stockInfoLoading, setStockInfoLoading] = useState(false);
-  const [stockInfoError, setStockInfoError] = useState(null);
-  // --- END States for detailed stock information section ---
+  const [tradeMessage, setTradeMessage] = useState(null);
+  const [tradeError, setTradeError] = useState(null);
+  const [watchlistInput, setWatchlistInput] = useState("");
+  const [watchlistMessage, setWatchlistMessage] = useState(null);
 
   // Effect to fetch live prices for the symbol in the form input
+  // This is still useful for instantly showing the price in the trade form
   useEffect(() => {
+    // isInvalidApiKey and FINNHUB_API_KEY are now directly available
     if (form.symbol && !livePrices[form.symbol.toUpperCase()] && !loadingData && !isInvalidApiKey(FINNHUB_API_KEY)) {
       const handler = setTimeout(() => {
         fetchLivePrices([form.symbol.toUpperCase()]);
@@ -70,56 +69,7 @@ function TradingDashboard() {
         clearTimeout(handler);
       };
     }
-  }, [form.symbol, livePrices, loadingData, fetchLivePrices, isInvalidApiKey, FINNHUB_API_KEY]);
-
-  // --- Effect for fetching detailed stock info and historical data ---
-  useEffect(() => {
-    const fetchStockDetails = async () => {
-      const symbol = form.symbol.toUpperCase();
-      if (!symbol || isInvalidApiKey(FINNHUB_API_KEY)) {
-        setCompanyProfile(null);
-        setQuoteDetails(null);
-        setHistoricalChartData([]);
-        setStockInfoError(null);
-        return;
-      }
-
-      setStockInfoLoading(true);
-      setStockInfoError(null);
-
-      try {
-        const profileResponse = await axios.get(
-          `https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${FINNHUB_API_KEY}`
-        );
-        setCompanyProfile(profileResponse.data && Object.keys(profileResponse.data).length > 0 ? profileResponse.data : null);
-
-        const quoteResponse = await axios.get(
-          `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`
-        );
-        setQuoteDetails(quoteResponse.data && quoteResponse.data.c ? quoteResponse.data : null);
-
-        // --- HISTORICAL DATA FETCH (COMMENTED OUT DUE TO FREE-TIER LIMITATIONS) ---
-        setHistoricalChartData([]); // Ensure this is cleared if historical fetch is disabled
-
-      } catch (err) {
-        console.error("Error fetching stock info for", symbol, err);
-        setStockInfoError(`Could not fetch detailed info for ${symbol}. This might be due to an invalid symbol, API key limits, or Finnhub free-tier restrictions on advanced data. Please check the symbol and your Finnhub plan.`);
-        setCompanyProfile(null);
-        setQuoteDetails(null);
-        setHistoricalChartData([]);
-      } finally {
-        setStockInfoLoading(false);
-      }
-    };
-
-    const handler = setTimeout(() => {
-      fetchStockDetails();
-    }, 700);
-
-    return () => clearTimeout(handler);
-
-  }, [form.symbol, FINNHUB_API_KEY, isInvalidApiKey]);
-  // --- END useEffect for detailed stock info ---
+  }, [form.symbol, livePrices, loadingData, fetchLivePrices, isInvalidApiKey, FINNHUB_API_KEY]); // Dependencies are correct
 
   // Handle form input changes for trade form
   const handleChange = (e) => {
@@ -130,14 +80,14 @@ function TradingDashboard() {
     setForm({ ...form, [e.target.name]: value });
   };
 
-  // Handle watchlist input change <-- ADD THIS FUNCTION
+  // Handle watchlist input change
   const handleWatchlistInputChange = (e) => {
     setWatchlistInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''));
   };
 
-  // --- Add to Watchlist handler --- <-- ADD THIS FUNCTION
+  // --- Add to Watchlist handler ---
   const handleAddToWatchlist = async () => {
-    setWatchlistMessage(null); // Clear previous messages
+    setWatchlistMessage(null);
     if (!watchlistInput) {
       setWatchlistMessage({ type: 'error', text: "Please enter a symbol to add to watchlist." });
       return;
@@ -150,15 +100,15 @@ function TradingDashboard() {
     try {
       await addToWatchlist(watchlistInput);
       setWatchlistMessage({ type: 'success', text: `'${watchlistInput}' added to watchlist.` });
-      setWatchlistInput(""); // Clear input
+      setWatchlistInput("");
     } catch (error) {
       setWatchlistMessage({ type: 'error', text: `Failed to add '${watchlistInput}': ${error.message}` });
     }
   };
 
-  // --- Remove from Watchlist handler --- <-- ADD THIS FUNCTION
+  // --- Remove from Watchlist handler ---
   const handleRemoveFromWatchlist = async (symbol) => {
-    setWatchlistMessage(null); // Clear previous messages
+    setWatchlistMessage(null);
     if (!window.confirm(`Are you sure you want to remove '${symbol}' from your watchlist?`)) {
       return;
     }
@@ -170,7 +120,6 @@ function TradingDashboard() {
     }
   };
 
-
   // --- Generic trade execution function ---
   const validateAndExecuteTrade = async (type) => {
     setTradeMessage(null);
@@ -181,6 +130,7 @@ function TradingDashboard() {
       return;
     }
 
+    // isInvalidApiKey and FINNHUB_API_KEY are now directly available
     if (isInvalidApiKey(FINNHUB_API_KEY)) {
       setTradeError("Trading disabled: Invalid Finnhub API Key. Please update it in TradingDataContext.js.");
       return;
@@ -198,7 +148,7 @@ function TradingDashboard() {
       setTradeError(`Symbol '${sym}' is not a recognized US stock ticker. Please check your input or Finnhub API key coverage.`);
       return;
     }
-    
+
     const price = livePrices[sym];
     if (typeof price !== 'number' || price <= 0) {
       setTradeError(
@@ -217,10 +167,10 @@ function TradingDashboard() {
         return;
       }
       newCapital = capital - tradeCostOrProceeds;
-    } else {
+    } else { // Sell
       const { holdings: pnlHoldingsForSell } = calculatePnL();
       const heldStock = pnlHoldingsForSell.find(s => s.symbol === sym);
-      
+
       if (!heldStock || heldStock.netQty < qty) {
           setTradeError(`You only hold ${heldStock ? heldStock.netQty : 0} of ${sym}. Cannot sell ${qty}.`);
           return;
@@ -235,19 +185,19 @@ function TradingDashboard() {
 
       if (tradeInsertError) throw tradeInsertError;
 
-      await setCapital(newCapital);
+      await setCapital(newCapital); // Use handleSetCapital which updates DB
 
       setTradeMessage(`${sym} ${type === 'buy' ? 'bought' : 'sold'} successfully!`);
       setForm({ ...form, quantity: "" });
-      fetchTrades();
-      setSymbolError("");
+      fetchTrades(user.id); // Re-fetch trades to update P&L
     } catch (error) {
       console.error("Error executing trade:", error.message);
       setTradeError(`Trade failed: ${error.message || "An unexpected error occurred."}`);
+      // Revert capital in case of a DB error for consistency
       if (type === "buy") {
-        setCapital(capital + tradeCostOrProceeds);
+        setCapital(capital); // Don't subtract if DB failed
       } else {
-        setCapital(capital - tradeCostOrProceeds);
+        setCapital(capital); // Don't add if DB failed
       }
     }
   };
@@ -261,7 +211,7 @@ function TradingDashboard() {
     Type: ${trade.type}
     Quantity: ${trade.quantity}
     Price: ${CURRENCY_SYMBOL}${trade.price.toFixed(2)}
-    This action cannot be undone and will adjust your capital.`)) {
+    This action cannot be undone and will adjust your capital.`)) { // CURRENCY_SYMBOL is now directly available
       return;
     }
 
@@ -269,7 +219,7 @@ function TradingDashboard() {
     setTradeError(null);
 
     try {
-      await removeTrade(trade);
+      await removeTrade(trade); // Use the removeTrade from context
       setTradeMessage("Trade successfully removed and capital adjusted.");
     } catch (error) {
       console.error("Failed to remove trade:", error);
@@ -344,7 +294,7 @@ function TradingDashboard() {
       </section>
 
       {/* --- API Key Warning Message --- */}
-      {isInvalidApiKey(FINNHUB_API_KEY) && (
+      {isInvalidApiKey(FINNHUB_API_KEY) && ( // isInvalidApiKey and FINNHUB_API_KEY are now directly available
         <p className="message api-warning-message">
           <span role="img" aria-label="warning sign">⚠️</span> WARNING: A valid Finnhub API Key is not set in `TradingDataContext.js` or your current key is a free-tier key.
           Symbol list, live prices, and full trading functionality may be limited or not work correctly.
@@ -404,7 +354,7 @@ function TradingDashboard() {
         </form>
       </section>
 
-      {/* --- NEW: Watchlist Section --- <-- ADD THIS ENTIRE SECTION */}
+      {/* --- NEW: Watchlist Section --- */}
       <section className="watchlist-section card">
         <h2>My Watchlist</h2>
         {watchlistMessage && (
@@ -412,14 +362,14 @@ function TradingDashboard() {
             {watchlistMessage.text}
           </p>
         )}
-        <div className="watchlist-add-form trade-form"> {/* Re-using trade-form styles */}
+        <div className="watchlist-add-form trade-form">
           <input
             type="text"
             placeholder="Add SYMBOL to watchlist"
             value={watchlistInput}
             onChange={handleWatchlistInputChange}
             className="trade-input"
-            list="symbols-list" // Still use common symbol list
+            list="symbols-list"
           />
           <button onClick={handleAddToWatchlist} className="btn btn-primary">
             <span role="img" aria-label="add">➕</span> Add to Watchlist
@@ -434,13 +384,17 @@ function TradingDashboard() {
                 <span className="price-value">
                   {livePrices[symbol] ? `${CURRENCY_SYMBOL}${livePrices[symbol].toFixed(2)}` : 'N/A'}
                 </span>
+                {/* MODIFICATION: Link to StockDetailsPage from Watchlist */}
+                <Link to={`/stocks/${symbol}`} className="btn btn-info btn-view-chart" title={`View ${symbol} Chart`}>
+                    📈
+                </Link>
                 <button
                   onClick={() => handleRemoveFromWatchlist(symbol)}
-                  className="btn remove-trade-btn" // Re-using existing style
+                  className="btn remove-trade-btn"
                   title={`Remove ${symbol}`}
-                  style={{ marginLeft: 'auto', flexShrink: 0 }} // Align to right
+                  style={{ marginLeft: 'auto', flexShrink: 0 }}
                 >
-                  &times; {/* HTML entity for multiplication sign, good for close button */}
+                  &times;
                 </button>
               </div>
             ))}
@@ -451,79 +405,13 @@ function TradingDashboard() {
           </p>
         )}
       </section>
-      {/* --- END NEW: Watchlist Section --- */}
+
+      {/* --- REMOVED: Symbol-specific Information & History Section ---
+          This functionality has been moved to StockDetailsPage.js
+      */}
 
 
-      {/* --- Symbol-specific Information & History Section --- */}
-      {form.symbol && (
-        <section className="stock-info-card card">
-          <h2>
-            Information for: {form.symbol.toUpperCase()}{" "}
-            {livePrices[form.symbol.toUpperCase()] ? `(${CURRENCY_SYMBOL}${livePrices[form.symbol.toUpperCase()].toFixed(2)})` : ''}
-          </h2>
-
-          {stockInfoLoading && (
-            <div className="spinner-container">
-              <div className="spinner"></div>
-              <p className="spinner-text">Loading stock details...</p>
-            </div>
-          )}
-
-          {stockInfoError && <p className="message error-message">
-            <span role="img" aria-label="error">❌</span> {stockInfoError}
-          </p>}
-
-          {!stockInfoLoading && !stockInfoError && companyProfile && (
-            <div className="stock-profile">
-              <h3>Company Profile</h3>
-              <p><strong>Name:</strong> {companyProfile.name || 'N/A'}</p>
-              <p><strong>Exchange:</strong> {companyProfile.exchange || 'N/A'}</p>
-              <p><strong>Industry:</strong> {companyProfile.finnhubIndustry || 'N/A'}</p>
-              <p><strong>IPO Date:</strong> {companyProfile.ipo || 'N/A'}</p>
-              <p><strong>Market Cap:</strong> {companyProfile.marketCapitalization ? `${CURRENCY_SYMBOL}${companyProfile.marketCapitalization.toFixed(2)}B` : 'N/A'}</p>
-              {companyProfile.weburl && <p><strong>Website:</strong> <a href={companyProfile.weburl} target="_blank" rel="noopener noreferrer">{companyProfile.weburl}</a></p>}
-            </div>
-          )}
-
-          {!stockInfoLoading && !stockInfoError && quoteDetails && (
-            <div className="quote-details">
-              <h3>Daily Quote</h3>
-              <p><strong>Open:</strong> {quoteDetails.o ? `${CURRENCY_SYMBOL}${quoteDetails.o.toFixed(2)}` : 'N/A'}</p>
-              <p><strong>High:</strong> {quoteDetails.h ? `${CURRENCY_SYMBOL}${quoteDetails.h.toFixed(2)}` : 'N/A'}</p>
-              <p><strong>Low:</strong> {quoteDetails.l ? `${CURRENCY_SYMBOL}${quoteDetails.l.toFixed(2)}` : 'N/A'}</p>
-              <p><strong>Previous Close:</strong> {quoteDetails.pc ? `${CURRENCY_SYMBOL}${quoteDetails.pc.toFixed(2)}` : 'N/A'}</p>
-              <p><strong>Change:</strong> <span className={quoteDetails.d >= 0 ? "text-green" : "text-red"}>{quoteDetails.d ? `${CURRENCY_SYMBOL}${quoteDetails.d.toFixed(2)}` : 'N/A'}</span></p>
-              <p><strong>Percent Change:</strong> <span className={quoteDetails.dp >= 0 ? "text-green" : "text-red"}>{quoteDetails.dp ? `${quoteDetails.dp.toFixed(2)}%` : 'N/A'}</span></p>
-            </div>
-          )}
-
-          {!stockInfoLoading && !stockInfoError && historicalChartData.length > 0 ? (
-            <div className="historical-chart">
-              <h3>6-Month Price History</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={historicalChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" interval={Math.floor(historicalChartData.length / 5)} />
-                  <YAxis domain={['dataMin', 'dataMax']} tickFormatter={(value) => `${CURRENCY_SYMBOL}${value.toFixed(2)}`}/>
-                  <Tooltip
-                    formatter={(value) => [`${CURRENCY_SYMBOL}${Number(value).toFixed(2)}`, 'Close Price']}
-                    labelFormatter={(label) => `Date: ${label}`}
-                  />
-                  <Legend />
-                  <Line type="monotone" dataKey="price" stroke="#007bff" dot={false} activeDot={{ r: 8 }} name="Close Price" />
-                </LineChart>
-              </ResponsiveContainer>
-              <p className="message info-message" style={{textAlign: 'center', fontSize: '0.9em', color: '#777', marginTop: '1rem'}}>
-                <span role="img" aria-label="info">ℹ️</span> Displaying daily close prices. Historical data access depends on Finnhub API plan.
-              </p>
-            </div>
-          ) : !stockInfoLoading && !stockInfoError && form.symbol && <p className="message info-message">
-            <span role="img" aria-label="info">ℹ️</span> No historical data available or supported by your Finnhub API key for this symbol.
-          </p>}
-        </section>
-      )}
-
-      {/* --- Live Prices Section --- */}
+      {/* --- Live Prices Section (Expanded to include chart link) --- */}
       <section className="live-prices-card card">
         <h2>Live Prices (All Monitored US Stocks)</h2>
         {symbolError && <p className="message error-message">
@@ -536,6 +424,10 @@ function TradingDashboard() {
                 <div key={sym} className="price-item">
                   <span className="price-symbol">{sym}:</span>
                   <span className="price-value">{CURRENCY_SYMBOL}{price.toFixed(2)}</span>
+                  {/* MODIFICATION: Add Link to StockDetailsPage for all listed live prices */}
+                  <Link to={`/stocks/${sym}`} className="btn btn-info btn-view-chart" title={`View ${sym} Chart`}>
+                    📈
+                  </Link>
                 </div>
               ) : null
             )}
@@ -566,7 +458,13 @@ function TradingDashboard() {
               <tbody>
                 {trades.map((t) => (
                   <tr key={t.id}>
-                    <td>{t.symbol}</td>
+                    <td>
+                        {t.symbol}
+                        {/* OPTIONAL: Add a link here too if you want to view chart from trade history */}
+                        <Link to={`/stocks/${t.symbol}`} className="btn btn-info btn-view-chart-small" title={`View ${t.symbol} Chart`}>
+                            📈
+                        </Link>
+                    </td>
                     <td>{t.quantity}</td>
                     <td>{CURRENCY_SYMBOL}{Number(t.price).toFixed(2)}</td>
                     <td className={t.type === 'buy' ? 'trade-type-buy' : 'trade-type-sell'}>{t.type}</td>
@@ -607,7 +505,13 @@ function TradingDashboard() {
               <tbody>
                 {holdingsData.filter(row => row.netQty > 0).map((row) => (
                   <tr key={row.symbol}>
-                    <td>{row.symbol}</td>
+                    <td>
+                        {row.symbol}
+                        {/* MODIFICATION: Link to StockDetailsPage from Holdings */}
+                        <Link to={`/stocks/${row.symbol}`} className="btn btn-info btn-view-chart-small" title={`View ${row.symbol} Chart`}>
+                            📈
+                        </Link>
+                    </td>
                     <td>{row.netQty}</td>
                     <td>{CURRENCY_SYMBOL}{row.avgBuyPrice}</td>
                     <td>{livePrices[row.symbol] ? `${CURRENCY_SYMBOL}${livePrices[row.symbol].toFixed(2)}` : "N/A"}</td>

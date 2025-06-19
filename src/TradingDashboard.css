@@ -502,3 +502,30 @@ h2 {
         padding: 1rem;
     }
 }
+/* Add this to your existing TradingDashboard.css or App.css */
+
+.btn-view-chart {
+    margin-left: 10px;
+    padding: 5px 8px;
+    font-size: 0.8em;
+    line-height: 1;
+    background-color: #17a2b8; /* Bootstrap info blue */
+    color: white;
+    border-radius: 4px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+}
+.btn-view-chart:hover {
+    background-color: #138496;
+}
+
+/* For the smaller buttons in tables */
+.btn-view-chart-small {
+    margin-left: 5px;
+    padding: 2px 6px;
+    font-size: 0.7em;
+}

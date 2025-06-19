@@ -3,19 +3,23 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from "./supabaseClient";
 import axios from "axios";
 
-const TradingDataContext = createContext();
-
 // Constants for API Key and Currency Symbol
 // WARNING: Hardcoding API keys directly in source code is not recommended for security.
 // Consider using environment variables (.env file) for production deployment.
-// MODIFICATION: Updated Finnhub API Key to the full, correct one.
-const FINNHUB_API_KEY = "d108911r01qhkqr8ggb0d108911r01qhkqr8ggbg"; // YOUR API KEY IS NOW HARDCODED HERE
-const CURRENCY_SYMBOL = process.env.REACT_APP_CURRENCY_SYMBOL || "$";
+// MODIFICATION: Export FINNHUB_API_KEY
+export const FINNHUB_API_KEY = "d108911r01qhkqr8ggb0d108911r01qhkqr8ggbg"; // YOUR API KEY IS NOW HARDCODED HERE
+// MODIFICATION: Export CURRENCY_SYMBOL
+export const CURRENCY_SYMBOL = process.env.REACT_APP_CURRENCY_SYMBOL || "$";
 
 // Helper to check if API key is valid (simple check)
-const isInvalidApiKey = (key) => {
-  return !key || key === "YOUR_FINNHUB_API_KEY" || key.length < 10;
+// MODIFICATION: Export isInvalidApiKey
+export const isInvalidApiKey = (key) => {
+  // It's good practice to trim any whitespace that might be accidentally copied
+  const trimmedKey = key ? key.trim() : '';
+  return !trimmedKey || trimmedKey === "YOUR_FINNHUB_API_KEY_HERE" || trimmedKey.length < 10;
 };
+
+const TradingDataContext = createContext();
 
 export const TradingDataProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -49,7 +53,8 @@ export const TradingDataProvider = ({ children }) => {
     try {
       const responses = await Promise.all(
         uniqueSymbols.map((symbol) =>
-          axios.get(`https://finnhub.io/api/v1/quote?symbol=<span class="math-inline">\{symbol\}&token\=</span>{FINNHUB_API_KEY}`)
+          // MODIFICATION: Corrected the template literal for the Finnhub API URL
+          axios.get(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`)
         )
       );
 
@@ -86,13 +91,14 @@ export const TradingDataProvider = ({ children }) => {
         .eq("user_id", userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error && error.code !== 'PGRST116') { // PGRST116 means "no row found"
         throw error;
       }
 
       if (data) {
         setCapital(data.capital);
       } else {
+        // If no profile exists, create one with initial capital
         const { data: newProfile, error: insertError } = await supabase
           .from("user_profiles")
           .insert([{ user_id: userId, capital: 10000 }])
@@ -104,7 +110,7 @@ export const TradingDataProvider = ({ children }) => {
       }
     } catch (error) {
       console.error("Error fetching or setting capital:", error.message);
-      setCapital(10000);
+      setCapital(10000); // Default to initial capital on error
     } finally {
       setLoadingData(false);
     }
@@ -124,7 +130,7 @@ export const TradingDataProvider = ({ children }) => {
         .eq("user_id", userId);
 
       if (error) throw error;
-      setCapital(newCapital);
+      setCapital(newCapital); // Update local state after successful DB update
     } catch (error) {
       console.error("Error updating capital in DB:", error.message);
     } finally {
@@ -134,7 +140,7 @@ export const TradingDataProvider = ({ children }) => {
 
   // --- Wrapped setCapital to update DB as well ---
   const handleSetCapital = useCallback(async (newCapital) => {
-    setCapital(newCapital);
+    setCapital(newCapital); // Optimistically update local state
     if (user?.id) {
       await updateCapitalInDb(newCapital, user.id);
     } else {
@@ -227,7 +233,7 @@ export const TradingDataProvider = ({ children }) => {
 
       if (error) throw error;
       setWatchListSymbols((prev) => prev.filter((s) => s !== symbol.toUpperCase()));
-      setLivePrices((prev) => {
+      setLivePrices((prev) => { // Clear live price for removed symbol if not needed elsewhere
         const newPrices = { ...prev };
         delete newPrices[symbol.toUpperCase()];
         return newPrices;
@@ -293,19 +299,28 @@ export const TradingDataProvider = ({ children }) => {
         holdings[trade.symbol].totalCost += trade.quantity * trade.price;
         holdings[trade.symbol].netQty += trade.quantity;
         holdings[trade.symbol].avgBuyPrice =
-          holdings[trade.symbol].totalCost / holdings[trade.symbol].netQty;
-      } else {
-        const { netQty: currentNetQty, avgBuyPrice } = holdings[trade.symbol];
-        if (currentNetQty > 0) {
-          const sellProfit = (trade.price - avgBuyPrice) * trade.quantity;
-          totalRealizedPnl += sellProfit;
+          holdings[trade.symbol].netQty > 0 ? holdings[trade.symbol].totalCost / holdings[trade.symbol].netQty : 0;
+      } else { // sell
+        const qtySold = trade.quantity;
+        const currentNetQty = holdings[trade.symbol].netQty;
+        const currentAvgBuyPrice = holdings[trade.symbol].avgBuyPrice;
+
+        if (currentNetQty > 0) { // Only calculate realized PnL if there were holdings to sell against
+            const sellCostBasis = (currentAvgBuyPrice * Math.min(qtySold, currentNetQty));
+            const sellProceeds = trade.price * qtySold;
+            totalRealizedPnl += (sellProceeds - sellCostBasis);
         }
-        holdings[trade.symbol].netQty -= trade.quantity;
+
+        holdings[trade.symbol].netQty -= qtySold;
+        
+        // Adjust totalCost and avgBuyPrice if netQty becomes zero or negative
         if (holdings[trade.symbol].netQty <= 0) {
           holdings[trade.symbol].totalCost = 0;
           holdings[trade.symbol].avgBuyPrice = 0;
+          holdings[trade.symbol].netQty = 0; // Ensure netQty doesn't go negative
         } else {
-          holdings[trade.symbol].totalCost = holdings[trade.symbol].netQty * holdings[trade.symbol].avgBuyPrice;
+             // If partial sell, new totalCost and avgBuyPrice for remaining shares
+             holdings[trade.symbol].totalCost = holdings[trade.symbol].netQty * holdings[trade.symbol].avgBuyPrice;
         }
       }
     });
@@ -354,26 +369,28 @@ export const TradingDataProvider = ({ children }) => {
 
       if (deleteError) throw deleteError;
 
+      // Re-fetch all trades to reconstruct history
       await fetchTrades(user.id);
 
+      // Recalculate capital from scratch based on the new trade history
       const { data: allTradesAfterDeletion, error: fetchAllTradesError } = await supabase
           .from("trades")
           .select("*")
           .eq("user_id", user.id)
-          .order("created_at", { ascending: true });
+          .order("created_at", { ascending: true }); // Order by created_at to simulate transaction history
 
       if (fetchAllTradesError) throw fetchAllTradesError;
 
-      let calculatedCapital = 10000;
+      let recalculatedCapital = 10000; // Start with initial capital
       allTradesAfterDeletion.forEach(trade => {
           if (trade.type === 'buy') {
-              calculatedCapital -= (trade.quantity * trade.price);
-          } else {
-              calculatedCapital += (trade.quantity * trade.price);
+              recalculatedCapital -= (trade.quantity * trade.price);
+          } else { // sell
+              recalculatedCapital += (trade.quantity * trade.price);
           }
       });
 
-      await handleSetCapital(calculatedCapital);
+      await handleSetCapital(recalculatedCapital); // Update capital in DB and state
       
     } catch (error) {
       console.error("Error removing trade:", error.message);
@@ -396,7 +413,7 @@ export const TradingDataProvider = ({ children }) => {
           await fetchWatchlist(currentUser.id);
           setLoadingData(false);
         } else {
-          setCapital(10000);
+          setCapital(10000); // Reset to initial capital for logged-out state
           setTrades([]);
           setWatchListSymbols([]);
           setLivePrices({});
@@ -406,7 +423,7 @@ export const TradingDataProvider = ({ children }) => {
       }
     );
 
-    // Initial check for session
+    // Initial check for session on component mount
     const checkSession = async () => {
       setLoadingData(true);
       const { data: { session } } = await supabase.auth.getSession();
@@ -423,34 +440,37 @@ export const TradingDataProvider = ({ children }) => {
     };
 
     checkSession();
-    fetchAvailableSymbols(); // Fetch symbols once on load
+    fetchAvailableSymbols(); // Fetch symbols once on load for everyone
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [fetchCapital, fetchTrades, fetchAvailableSymbols, fetchWatchlist]);
+  }, [fetchCapital, fetchTrades, fetchAvailableSymbols, fetchWatchlist]); // Dependencies for initial data load
 
   // --- Effect to fetch live prices for all relevant symbols ---
   useEffect(() => {
+    // Combine symbols from trades and watchlist
     const allSymbols = [
       ...new Set([
         ...trades.map((t) => t.symbol),
         ...watchListSymbols,
-        ...Object.keys(livePrices)
+        // If you want to persist prices for already fetched symbols, add Object.keys(livePrices)
+        // ...Object.keys(livePrices)
       ])
-    ].filter(Boolean);
+    ].filter(Boolean); // Filter out any null/undefined/empty symbols
 
     if (allSymbols.length > 0) {
+      // Fetch immediately
       fetchLivePrices(allSymbols);
 
+      // Set up interval for periodic refresh
       const interval = setInterval(() => {
         fetchLivePrices(allSymbols);
-      }, 20000);
+      }, 20000); // Every 20 seconds
 
-      return () => clearInterval(interval);
+      return () => clearInterval(interval); // Cleanup on unmount or dependency change
     }
-  }, [trades, watchListSymbols, fetchLivePrices]);
-
+  }, [trades, watchListSymbols, fetchLivePrices]); // Re-run if trades or watchlist change
 
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo(
@@ -458,7 +478,7 @@ export const TradingDataProvider = ({ children }) => {
       user,
       trades,
       capital,
-      setCapital: handleSetCapital,
+      setCapital: handleSetCapital, // Use the wrapped function
       livePrices,
       availableSymbols,
       symbolError,
@@ -467,9 +487,9 @@ export const TradingDataProvider = ({ children }) => {
       fetchLivePrices,
       calculatePnL,
       calculateTotalPortfolioValue,
-      isInvalidApiKey,
-      FINNHUB_API_KEY,
-      CURRENCY_SYMBOL,
+      // FINNHUB_API_KEY, // No longer need to pass these through context value, as they are exported directly
+      // CURRENCY_SYMBOL,
+      // isInvalidApiKey,
       loadingData,
       removeTrade,
       watchListSymbols,
@@ -489,14 +509,13 @@ export const TradingDataProvider = ({ children }) => {
       fetchLivePrices,
       calculatePnL,
       calculateTotalPortfolioValue,
-      isInvalidApiKey,
-      FINNHUB_API_KEY,
-      CURRENCY_SYMBOL,
       loadingData,
       removeTrade,
       addToWatchlist,
       removeFromWatchlist,
       watchListSymbols,
+      // Removed FINNHUB_API_KEY, CURRENCY_SYMBOL, isInvalidApiKey from dependencies
+      // because they are now stable constants exported directly.
     ]
   );
 
@@ -507,4 +526,10 @@ export const TradingDataProvider = ({ children }) => {
   );
 };
 
-export const useTradingData = () => useContext(TradingDataContext);
+export const useTradingData = () => {
+  const context = useContext(TradingDataContext);
+  if (context === undefined) {
+    throw new Error("useTradingData must be used within a TradingDataProvider");
+  }
+  return context;
+};

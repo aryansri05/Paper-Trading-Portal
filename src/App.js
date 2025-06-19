@@ -11,7 +11,10 @@ import { TradingDataProvider } from "./TradingDataContext";
 import './App.css'; // Your main application CSS
 
 // Import your logo image (adjust path if needed)
-import MyTradingPortalLogo from './images/my-trading-portal-logo.png'; 
+import MyTradingPortalLogo from './images/my-trading-portal-logo.png';
+
+// MODIFICATION: Import the new StockDetailsPage component
+import StockDetailsPage from './pages/StockDetailsPage'; // Assuming it's in src/pages/
 
 function App() {
   const [user, setUser] = useState(null);
@@ -23,7 +26,7 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log(`App.js: onAuthStateChange event fired: ${event}`);
-      
+
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       setLoading(false);
@@ -45,8 +48,8 @@ function App() {
 
   if (loading) {
     return (
-      <div className="loading-container"> {/* Apply modern loading styles */}
-        <div className="spinner"></div> {/* Basic spinner placeholder */}
+      <div className="loading-container">
+        <div className="spinner"></div>
         <p>Loading Session...</p>
       </div>
     );
@@ -58,18 +61,20 @@ function App() {
         <Switch>
           {user ? (
             // --- Authenticated Routes ---
-            <Route path={["/dashboard", "/portfolio", "/"]} render={() => (
+            // MODIFICATION: Add "/stocks/:symbol" to the path array for the parent Route
+            <Route path={["/dashboard", "/portfolio", "/stocks/:symbol", "/"]} render={() => (
               <TradingDataProvider user={user}>
                 <Switch>
                   <Route path="/dashboard" render={(props) => <TradingDashboard {...props} user={user} />} />
                   <Route path="/portfolio" component={PortfolioPage} />
+                  {/* MODIFICATION: Add the new Route for StockDetailsPage */}
+                  <Route path="/stocks/:symbol" component={StockDetailsPage} />
                   <Redirect to="/dashboard" />
                 </Switch>
               </TradingDataProvider>
             )} />
           ) : (
             // --- Unauthenticated Route (Login/Signup Page) ---
-            // Wrap the AuthForm in a container for styling the whole auth page
             <>
               <Route path="/login" render={(props) => (
                 <div className="auth-page-container">

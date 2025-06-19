@@ -1,0 +1,162 @@
+/* src/pages/StockDetailsPage.css */
+
+.stock-details-page-container {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 20px auto;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.details-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.details-header h1 {
+    color: #333;
+    margin: 0;
+    font-size: 2.2em;
+}
+
+.details-header .current-price {
+    font-size: 1.5em;
+    font-weight: bold;
+    margin-top: 10px;
+    color: #555;
+}
+
+.details-header .current-price .price-value {
+    font-size: 1.2em;
+}
+
+.details-header .price-change {
+    font-size: 0.9em;
+    margin-left: 10px;
+    font-weight: normal;
+}
+
+.stock-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.details-card {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+.details-card h2 {
+    color: #007bff;
+    margin-top: 0;
+    margin-bottom: 15px;
+    border-bottom: 1px dashed #eee;
+    padding-bottom: 10px;
+}
+
+.details-card p {
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.details-card strong {
+    color: #333;
+}
+
+.company-profile-card p,
+.daily-quote-card p {
+    font-size: 0.95em;
+}
+
+.stock-chart-card {
+    grid-column: 1 / -1; /* Make chart span full width */
+    padding: 15px; /* Adjust padding for chart */
+}
+
+/* Loading and Error States */
+.stock-detail-loading-container,
+.stock-detail-error-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    text-align: center;
+    padding: 20px;
+}
+
+.stock-detail-error-container p {
+    color: #d9534f; /* Bootstrap's danger red */
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+
+/* Re-use general spinner from App.css or define here */
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-left-color: #007bff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.chart-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px; /* Match chart height */
+    color: #666;
+}
+
+/* Adjustments for buttons (assuming bootstrap-like btn styles exist) */
+.back-button {
+    margin-bottom: 15px;
+    align-self: flex-start;
+}
+
+.btn-view-chart {
+    margin-left: 10px;
+    padding: 5px 8px;
+    font-size: 0.8em;
+    line-height: 1;
+    background-color: #17a2b8; /* Bootstrap info blue */
+    color: white;
+    border-radius: 4px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+}
+.btn-view-chart:hover {
+    background-color: #138496;
+}
+
+/* Smaller button for tables */
+.btn-view-chart-small {
+    margin-left: 5px;
+    padding: 2px 6px;
+    font-size: 0.7em;
+}
+
+
+/* Basic text colors for P&L */
+.text-green { color: #28a745; } /* Bootstrap success green */
+.text-red { color: #dc3545; }  /* Bootstrap danger red */
