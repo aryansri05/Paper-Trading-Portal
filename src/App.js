@@ -1,97 +1,71 @@
 // src/App.js
-import React, { useState, useEffect } from "react";
-// Import Switch and Redirect for react-router-dom v5
-import { BrowserRouter as Router, Switch, Route, Redirect } from 'react-router-dom';
-import { supabase } from "./supabaseClient";
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { supabase } from './supabaseClient';
+import { useTradingData } from '../TradingDataContext'; // Go up one directory
+// Import your components
+import Auth from './components/Auth.jsx'; // Add .jsx extension
+// Check if Account.js exists in src/pages/ or needs to be created
+import Account from './pages/Account'; // Assuming it will be in src/pages/
+import Dashboard from './components/Dashboard';
+// Check if Navbar.js exists or needs to be created
+import Navbar from './components/Navbar'; // Assuming it will be in src/components/
+import StockDetailPage from './pages/stockdetailspage.js'; // Ensure casing matches exactly, and add .js extension
+// Check if WatchlistPage.js exists in src/pages/ or needs to be created
+import WatchlistPage from './pages/WatchlistPage'; // Assuming it will be in src/pages/
 
-import AuthForm from "./AuthForm"; // Your existing AuthForm component
-import TradingDashboard from "./TradingDashboard";
-import PortfolioPage from "./PortfolioPage";
-import { TradingDataProvider } from "./TradingDataContext";
-import './App.css'; // Your main application CSS
-
-// Import your logo image (adjust path if needed)
-import MyTradingPortalLogo from './images/my-trading-portal-logo.png';
-
-// MODIFICATION: Import the new StockDetailsPage component
-import StockDetailsPage from './pages/StockDetailsPage'; // Assuming it's in src/pages/
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(null);
+  const [loadingSession, setLoadingSession] = useState(true);
 
   useEffect(() => {
-    console.log("App.js: useEffect started, setting up auth listener.");
-    setLoading(true);
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log(`App.js: onAuthStateChange event fired: ${event}`);
-
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      setLoading(false);
-
-      if (currentUser) {
-        console.log("App.js: User state set to:", currentUser.email);
-      } else {
-        console.log("App.js: User state cleared (logged out).");
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoadingSession(false);
     });
 
-    return () => {
-      if (subscription) {
-        console.log("App.js: Unsubscribing from auth listener.");
-        subscription.unsubscribe();
-      }
-    };
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setLoadingSession(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) {
+  if (loadingSession) {
     return (
-      <div className="loading-container">
+      <div className="app-loading">
         <div className="spinner"></div>
-        <p>Loading Session...</p>
+        <p>Loading session...</p>
       </div>
     );
   }
 
   return (
     <Router>
-      <div className="App">
-        <Switch>
-          {user ? (
-            // --- Authenticated Routes ---
-            // MODIFICATION: Add "/stocks/:symbol" to the path array for the parent Route
-            <Route path={["/dashboard", "/portfolio", "/stocks/:symbol", "/"]} render={() => (
-              <TradingDataProvider user={user}>
-                <Switch>
-                  <Route path="/dashboard" render={(props) => <TradingDashboard {...props} user={user} />} />
-                  <Route path="/portfolio" component={PortfolioPage} />
-                  {/* MODIFICATION: Add the new Route for StockDetailsPage */}
-                  <Route path="/stocks/:symbol" component={StockDetailsPage} />
-                  <Redirect to="/dashboard" />
-                </Switch>
-              </TradingDataProvider>
-            )} />
-          ) : (
-            // --- Unauthenticated Route (Login/Signup Page) ---
-            <>
-              <Route path="/login" render={(props) => (
-                <div className="auth-page-container">
-                  <div className="auth-card">
-                    {/* Logo displayed above the AuthForm */}
-                    <img src={MyTradingPortalLogo} alt="My Trading Portal Logo" className="auth-logo" />
-                    <h2 className="auth-title">Welcome to My Trading Portal</h2>
-                    <AuthForm {...props} /> {/* Your AuthForm component */}
-                  </div>
-                </div>
-              )} />
-              {/* Redirect any other path to login if not authenticated */}
-              <Redirect to="/login" />
-            </>
-          )}
-        </Switch>
-      </div>
+      <TradingDataProvider>
+        {session && <Navbar session={session} />}
+        <main className="container">
+          <Routes>
+            {!session ? (
+              <Route path="*" element={<Auth />} />
+            ) : (
+              <>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/account" element={<Account key={session.user.id} session={session} />} />
+                <Route path="/stock/:symbol" element={<StockDetailPage />} />
+                <Route path="/watchlist" element={<WatchlistPage />} />
+
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </>
+            )}
+          </Routes>
+        </main>
+      </TradingDataProvider>
     </Router>
   );
 }

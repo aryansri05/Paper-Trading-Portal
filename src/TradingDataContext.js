@@ -6,17 +6,16 @@ import axios from "axios";
 // Constants for API Key and Currency Symbol
 // WARNING: Hardcoding API keys directly in source code is not recommended for security.
 // Consider using environment variables (.env file) for production deployment.
-// MODIFICATION: Export FINNHUB_API_KEY
-export const FINNHUB_API_KEY = "d108911r01qhkqr8ggb0d108911r01qhkqr8ggbg"; // YOUR API KEY IS NOW HARDCODED HERE
-// MODIFICATION: Export CURRENCY_SYMBOL
+
+export const FINNHUB_API_KEY = "d108911r01qhkqr8ggb0d108911r01qhkqr8ggbg"; // YOUR FINNHUB API KEY
+export const ALPHA_VANTAGE_API_KEY = "DR0O9MY1P0QU6ZEL"; // YOUR ALPHA VANTAGE API KEY HERE
 export const CURRENCY_SYMBOL = process.env.REACT_APP_CURRENCY_SYMBOL || "$";
 
 // Helper to check if API key is valid (simple check)
-// MODIFICATION: Export isInvalidApiKey
 export const isInvalidApiKey = (key) => {
-  // It's good practice to trim any whitespace that might be accidentally copied
   const trimmedKey = key ? key.trim() : '';
-  return !trimmedKey || trimmedKey === "YOUR_FINNHUB_API_KEY_HERE" || trimmedKey.length < 10;
+  // Check for empty string, Finnhub placeholder, or Alpha Vantage placeholder
+  return !trimmedKey || trimmedKey === "YOUR_FINNHUB_API_KEY_HERE" || trimmedKey === "YOUR_ALPHA_VANTAGE_API_KEY" || trimmedKey.length < 10;
 };
 
 const TradingDataContext = createContext();
@@ -31,10 +30,10 @@ export const TradingDataProvider = ({ children }) => {
   const [loadingData, setLoadingData] = useState(true);
   const [session, setSession] = useState(null); // Supabase session
   const [watchListSymbols, setWatchListSymbols] = useState([]);
+  const [holdings, setHoldings] = useState({}); // New state for holdings
 
-  // --- Fetch live prices for a given list of symbols ---
+  // --- Fetch live prices for a given list of symbols (uses Finnhub) ---
   const fetchLivePrices = useCallback(async (symbolsToFetch) => {
-    // Filter out invalid symbols or duplicates
     const uniqueSymbols = [...new Set(symbolsToFetch)].filter(s => s && typeof s === 'string');
 
     if (uniqueSymbols.length === 0 || isInvalidApiKey(FINNHUB_API_KEY)) {
@@ -53,7 +52,6 @@ export const TradingDataProvider = ({ children }) => {
     try {
       const responses = await Promise.all(
         uniqueSymbols.map((symbol) =>
-          // MODIFICATION: Corrected the template literal for the Finnhub API URL
           axios.get(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`)
         )
       );
@@ -172,6 +170,73 @@ export const TradingDataProvider = ({ children }) => {
     }
   }, []);
 
+  // --- Fetch holdings for the current user ---
+  const fetchHoldings = useCallback(async (userId) => {
+    if (!userId) {
+      setHoldings({});
+      return;
+    }
+    setLoadingData(true);
+    try {
+      const { data, error } = await supabase
+        .from("holdings")
+        .select("*")
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      const newHoldings = {};
+      data.forEach(holding => {
+        newHoldings[holding.symbol] = {
+          symbol: holding.symbol,
+          netQty: holding.net_qty,
+          totalCost: holding.total_cost,
+          avgBuyPrice: holding.avg_buy_price,
+        };
+      });
+      setHoldings(newHoldings);
+    } catch (error) {
+      console.error("Error fetching holdings:", error.message);
+      setHoldings({});
+    } finally {
+      setLoadingData(false);
+    }
+  }, []);
+
+  // --- Update holdings in Supabase ---
+  const updateHoldingInDb = useCallback(async (userId, symbol, netQty, totalCost, avgBuyPrice) => {
+    if (!userId) {
+      console.warn("updateHoldingInDb: No user ID, not updating DB.");
+      return;
+    }
+
+    try {
+      if (netQty === 0) {
+        // If netQty is 0, delete the holding
+        const { error } = await supabase
+          .from("holdings")
+          .delete()
+          .eq("user_id", userId)
+          .eq("symbol", symbol);
+        if (error) throw error;
+      } else {
+        // Upsert the holding
+        const { error } = await supabase
+          .from("holdings")
+          .upsert(
+            { user_id: userId, symbol, net_qty: netQty, total_cost: totalCost, avg_buy_price: avgBuyPrice },
+            { onConflict: ['user_id', 'symbol'] }
+          );
+        if (error) throw error;
+      }
+      // Re-fetch holdings to ensure state is in sync
+      await fetchHoldings(userId);
+    } catch (error) {
+      console.error("Error updating holding in DB:", error.message);
+      throw error;
+    }
+  }, [fetchHoldings]);
+
   // --- Fetch watchlist symbols for the current user ---
   const fetchWatchlist = useCallback(async (userId) => {
     if (!userId) {
@@ -244,7 +309,7 @@ export const TradingDataProvider = ({ children }) => {
     }
   }, [user]);
 
-  // --- Fetch available US stock symbols from Finnhub ---
+  // --- Fetch available US stock symbols from Finnhub (uses Finnhub) ---
   const fetchAvailableSymbols = useCallback(async () => {
     if (isInvalidApiKey(FINNHUB_API_KEY)) {
       setSymbolError("Invalid Finnhub API Key. Cannot fetch US stock symbols.");
@@ -280,75 +345,83 @@ export const TradingDataProvider = ({ children }) => {
     }
   }, []);
 
-  // --- Calculate PnL and Holdings ---
+  // --- Calculate PnL and Holdings (now uses `holdings` state directly) ---
   const calculatePnL = useCallback(() => {
-    let holdings = {};
-    let totalRealizedPnl = 0;
+    let totalRealizedPnl = 0; // This will still need to be calculated from trades
+    // For now, let's keep it simple and focus on unrealized PnL from the new holdings structure.
+    // Realized PnL will be derived from trade history, similar to before.
 
-    trades.forEach((trade) => {
-      if (!holdings[trade.symbol]) {
-        holdings[trade.symbol] = {
-          symbol: trade.symbol,
-          netQty: 0,
-          totalCost: 0,
-          avgBuyPrice: 0,
-        };
-      }
-
-      if (trade.type === "buy") {
-        holdings[trade.symbol].totalCost += trade.quantity * trade.price;
-        holdings[trade.symbol].netQty += trade.quantity;
-        holdings[trade.symbol].avgBuyPrice =
-          holdings[trade.symbol].netQty > 0 ? holdings[trade.symbol].totalCost / holdings[trade.symbol].netQty : 0;
-      } else { // sell
-        const qtySold = trade.quantity;
-        const currentNetQty = holdings[trade.symbol].netQty;
-        const currentAvgBuyPrice = holdings[trade.symbol].avgBuyPrice;
-
-        if (currentNetQty > 0) { // Only calculate realized PnL if there were holdings to sell against
-            const sellCostBasis = (currentAvgBuyPrice * Math.min(qtySold, currentNetQty));
-            const sellProceeds = trade.price * qtySold;
-            totalRealizedPnl += (sellProceeds - sellCostBasis);
-        }
-
-        holdings[trade.symbol].netQty -= qtySold;
-        
-        // Adjust totalCost and avgBuyPrice if netQty becomes zero or negative
-        if (holdings[trade.symbol].netQty <= 0) {
-          holdings[trade.symbol].totalCost = 0;
-          holdings[trade.symbol].avgBuyPrice = 0;
-          holdings[trade.symbol].netQty = 0; // Ensure netQty doesn't go negative
-        } else {
-             // If partial sell, new totalCost and avgBuyPrice for remaining shares
-             holdings[trade.symbol].totalCost = holdings[trade.symbol].netQty * holdings[trade.symbol].avgBuyPrice;
-        }
-      }
-    });
-
-    let totalUnrealizedPnl = 0;
+    let currentHoldingsCalculated = {};
     Object.values(holdings).forEach((holding) => {
-      if (holding.netQty > 0 && livePrices[holding.symbol]) {
-        const livePrice = livePrices[holding.symbol];
-        const unrealized = (livePrice - holding.avgBuyPrice) * holding.netQty;
-        holding.unrealizedPnl = unrealized.toFixed(2);
-        totalUnrealizedPnl += unrealized;
-      } else {
-        holding.unrealizedPnl = "0.00";
-      }
+        let unrealizedPnl = 0;
+        if (holding.netQty > 0 && livePrices[holding.symbol]) {
+            const livePrice = livePrices[holding.symbol];
+            unrealizedPnl = (livePrice - holding.avgBuyPrice) * holding.netQty;
+        }
+        currentHoldingsCalculated[holding.symbol] = {
+            ...holding,
+            unrealizedPnl: unrealizedPnl.toFixed(2),
+        };
     });
+
+    // Calculate totalUnrealizedPnl from currentHoldingsCalculated
+    const totalUnrealizedPnl = Object.values(currentHoldingsCalculated).reduce((sum, holding) => {
+        return sum + parseFloat(holding.unrealizedPnl || 0);
+    }, 0);
+
+    // Re-calculating realized PnL from trades is still necessary if trades are deleted.
+    // However, if trades are only added/modified, and holdings are the source of truth for current positions,
+    // realized PnL needs a more robust calculation method.
+    // For simplicity for now, we'll keep the existing realized PnL calculation logic that iterates through trades.
+    let realizedPnlFromTrades = 0;
+    const tempHoldingsForRealizedPnl = {}; // Temporary holdings to calculate realized PnL from trades
+    trades.slice().reverse().forEach((trade) => { // Iterate from oldest to newest for correct PnL calculation
+        if (!tempHoldingsForRealizedPnl[trade.symbol]) {
+            tempHoldingsForRealizedPnl[trade.symbol] = { netQty: 0, totalCost: 0, avgBuyPrice: 0 };
+        }
+
+        if (trade.type === "buy") {
+            tempHoldingsForRealizedPnl[trade.symbol].totalCost += trade.quantity * trade.price;
+            tempHoldingsForRealizedPyl[trade.symbol].netQty += trade.quantity;
+            tempHoldingsForRealizedPnl[trade.symbol].avgBuyPrice =
+                tempHoldingsForRealizedPnl[trade.symbol].netQty > 0
+                    ? tempHoldingsForRealizedPnl[trade.symbol].totalCost / tempHoldingsForRealizedPnl[trade.symbol].netQty
+                    : 0;
+        } else { // sell
+            const qtySold = trade.quantity;
+            const currentNetQty = tempHoldingsForRealizedPnl[trade.symbol].netQty;
+            const currentAvgBuyPrice = tempHoldingsForRealizedPnl[trade.symbol].avgBuyPrice;
+
+            if (currentNetQty > 0) {
+                const sellCostBasis = (currentAvgBuyPrice * Math.min(qtySold, currentNetQty));
+                const sellProceeds = trade.price * qtySold;
+                realizedPnlFromTrades += (sellProceeds - sellCostBasis);
+            }
+
+            tempHoldingsForRealizedPnl[trade.symbol].netQty -= qtySold;
+            if (tempHoldingsForRealizedPnl[trade.symbol].netQty <= 0) {
+                tempHoldingsForRealizedPnl[trade.symbol].totalCost = 0;
+                tempHoldingsForRealizedPnl[trade.symbol].avgBuyPrice = 0;
+                tempHoldingsForRealizedPnl[trade.symbol].netQty = 0;
+            } else {
+                tempHoldingsForRealizedPnl[trade.symbol].totalCost = tempHoldingsForRealizedPnl[trade.symbol].netQty * tempHoldingsForRealizedPnl[trade.symbol].avgBuyPrice;
+            }
+        }
+    });
+
 
     return {
-      holdings: Object.values(holdings),
-      totalRealizedPnl: totalRealizedPnl.toFixed(2),
+      holdings: Object.values(currentHoldingsCalculated),
+      totalRealizedPnl: realizedPnlFromTrades.toFixed(2),
       totalUnrealizedPnl: totalUnrealizedPnl.toFixed(2),
     };
-  }, [trades, livePrices]);
+  }, [holdings, livePrices, trades]);
 
   // --- Calculate total portfolio value ---
   const calculateTotalPortfolioValue = useCallback(() => {
-    const { holdings } = calculatePnL();
+    const { holdings: calculatedHoldings } = calculatePnL(); // Use the holdings from calculatePnL
     let holdingsValue = 0;
-    holdings.forEach(holding => {
+    Object.values(calculatedHoldings).forEach(holding => {
       if (holding.netQty > 0 && livePrices[holding.symbol]) {
         holdingsValue += holding.netQty * livePrices[holding.symbol];
       }
@@ -356,7 +429,82 @@ export const TradingDataProvider = ({ children }) => {
     return (capital + holdingsValue).toFixed(2);
   }, [capital, calculatePnL, livePrices]);
 
-  // --- Remove trade logic ---
+  // --- Add trade logic (modified to update holdings as well) ---
+  const addTrade = useCallback(async (newTrade) => {
+    if (!user?.id) throw new Error("User not authenticated.");
+
+    const normalizedSymbol = newTrade.symbol.toUpperCase();
+    const tradeCost = newTrade.quantity * newTrade.price;
+    let newCapital = capital;
+    let currentHolding = holdings[normalizedSymbol] || { netQty: 0, totalCost: 0, avgBuyPrice: 0 };
+    let newNetQty = currentHolding.netQty;
+    let newTotalCost = currentHolding.totalCost;
+    let newAvgBuyPrice = currentHolding.avgBuyPrice;
+
+    if (newTrade.type === "buy") {
+      newCapital -= tradeCost;
+      newNetQty += newTrade.quantity;
+      newTotalCost += tradeCost;
+      newAvgBuyPrice = newTotalCost / newNetQty;
+    } else { // sell
+      newCapital += tradeCost;
+      const qtySold = newTrade.quantity;
+
+      if (currentHolding.netQty < qtySold) {
+          throw new Error("Insufficient shares to sell.");
+      }
+
+      // Calculate realized PnL for this specific sale
+      const sellCostBasis = (currentHolding.avgBuyPrice * qtySold);
+      const sellProceeds = newTrade.price * qtySold;
+      const realizedPnlForThisSale = (sellProceeds - sellCostBasis);
+      // We will sum realized PnL later from all trades, no need to store here directly
+
+      newNetQty -= qtySold;
+      if (newNetQty <= 0) {
+        newTotalCost = 0;
+        newAvgBuyPrice = 0;
+        newNetQty = 0; // Ensure netQty doesn't go negative
+      } else {
+        // For partial sell, adjust totalCost for remaining shares
+        newTotalCost = newNetQty * currentHolding.avgBuyPrice; // The average buy price remains the same
+      }
+    }
+
+    try {
+      // 1. Insert the trade
+      const { data: insertedTrade, error: tradeError } = await supabase
+        .from("trades")
+        .insert([{
+          user_id: user.id,
+          symbol: normalizedSymbol,
+          type: newTrade.type,
+          quantity: newTrade.quantity,
+          price: newTrade.price,
+          created_at: new Date().toISOString(),
+        }])
+        .select()
+        .single();
+
+      if (tradeError) throw tradeError;
+
+      // 2. Update capital
+      await handleSetCapital(newCapital);
+
+      // 3. Update holdings
+      await updateHoldingInDb(user.id, normalizedSymbol, newNetQty, newTotalCost, newAvgBuyPrice);
+
+      // Refresh trades and holdings from DB to ensure state is consistent
+      await fetchTrades(user.id);
+      await fetchHoldings(user.id);
+
+    } catch (error) {
+      console.error("Error adding trade:", error.message);
+      throw error;
+    }
+  }, [user, capital, holdings, handleSetCapital, updateHoldingInDb, fetchTrades, fetchHoldings]);
+
+  // --- Remove trade logic (modified to correctly recalculate capital and holdings) ---
   const removeTrade = useCallback(async (tradeToRemove) => {
     if (!user?.id) throw new Error("User not authenticated.");
 
@@ -369,34 +517,100 @@ export const TradingDataProvider = ({ children }) => {
 
       if (deleteError) throw deleteError;
 
-      // Re-fetch all trades to reconstruct history
-      await fetchTrades(user.id);
+      // After deleting a trade, we need to recalculate capital and holdings from scratch
+      // to ensure accuracy. This is a common pattern for financial transaction systems.
 
-      // Recalculate capital from scratch based on the new trade history
-      const { data: allTradesAfterDeletion, error: fetchAllTradesError } = await supabase
-          .from("trades")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: true }); // Order by created_at to simulate transaction history
+      // 1. Fetch all remaining trades for the user
+      const { data: remainingTrades, error: fetchTradesError } = await supabase
+        .from("trades")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }); // Crucial: process in chronological order
 
-      if (fetchAllTradesError) throw fetchAllTradesError;
+      if (fetchTradesError) throw fetchTradesError;
 
+      // 2. Recalculate capital and holdings
       let recalculatedCapital = 10000; // Start with initial capital
-      allTradesAfterDeletion.forEach(trade => {
-          if (trade.type === 'buy') {
-              recalculatedCapital -= (trade.quantity * trade.price);
-          } else { // sell
-              recalculatedCapital += (trade.quantity * trade.price);
+      let recalculatedHoldings = {};
+
+      remainingTrades.forEach(trade => {
+        const symbol = trade.symbol;
+        const quantity = trade.quantity;
+        const price = trade.price;
+
+        if (!recalculatedHoldings[symbol]) {
+          recalculatedHoldings[symbol] = { netQty: 0, totalCost: 0, avgBuyPrice: 0 };
+        }
+
+        if (trade.type === 'buy') {
+          recalculatedCapital -= (quantity * price);
+          recalculatedHoldings[symbol].totalCost += (quantity * price);
+          recalculatedHoldings[symbol].netQty += quantity;
+          recalculatedHoldings[symbol].avgBuyPrice = recalculatedHoldings[symbol].netQty > 0
+            ? recalculatedHoldings[symbol].totalCost / recalculatedHoldings[symbol].netQty
+            : 0;
+        } else { // sell
+          recalculatedCapital += (quantity * price);
+          
+          const currentNetQty = recalculatedHoldings[symbol].netQty;
+          const currentAvgBuyPrice = recalculatedHoldings[symbol].avgBuyPrice;
+
+          // Only adjust holdings if selling existing shares
+          if (currentNetQty > 0) {
+              const qtyToSellFromHolding = Math.min(quantity, currentNetQty);
+              recalculatedHoldings[symbol].netQty -= qtyToSellFromHolding;
+              
+              if (recalculatedHoldings[symbol].netQty <= 0) {
+                  recalculatedHoldings[symbol].totalCost = 0;
+                  recalculatedHoldings[symbol].avgBuyPrice = 0;
+                  recalculatedHoldings[symbol].netQty = 0; // Ensure it's not negative
+              } else {
+                  // If partial sell, totalCost adjusts proportionally
+                  recalculatedHoldings[symbol].totalCost = recalculatedHoldings[symbol].netQty * currentAvgBuyPrice;
+              }
           }
+        }
       });
 
-      await handleSetCapital(recalculatedCapital); // Update capital in DB and state
+      // 3. Update capital in DB and state
+      await handleSetCapital(recalculatedCapital);
+
+      // 4. Update all holdings in DB based on recalculation
+      // First, delete all existing holdings for the user
+      const { error: deleteHoldingsError } = await supabase
+        .from("holdings")
+        .delete()
+        .eq("user_id", user.id);
+      if (deleteHoldingsError) throw deleteHoldingsError;
+
+      // Then, insert the recalculated holdings
+      const holdingsToInsert = Object.values(recalculatedHoldings)
+        .filter(h => h.netQty > 0) // Only insert holdings with positive quantity
+        .map(h => ({
+          user_id: user.id,
+          symbol: h.symbol,
+          net_qty: h.netQty,
+          total_cost: h.totalCost,
+          avg_buy_price: h.avgBuyPrice,
+        }));
+
+      if (holdingsToInsert.length > 0) {
+        const { error: insertHoldingsError } = await supabase
+          .from("holdings")
+          .insert(holdingsToInsert);
+        if (insertHoldingsError) throw insertHoldingsError;
+      }
       
+      // Finally, re-fetch all state to ensure consistency
+      await fetchTrades(user.id);
+      await fetchHoldings(user.id);
+
     } catch (error) {
       console.error("Error removing trade:", error.message);
       throw error;
     }
-  }, [user, fetchTrades, handleSetCapital]);
+  }, [user, handleSetCapital, fetchTrades, fetchHoldings]);
+
 
   // --- Initial Data Load on Mount or User Change ---
   useEffect(() => {
@@ -410,11 +624,13 @@ export const TradingDataProvider = ({ children }) => {
           setLoadingData(true);
           await fetchCapital(currentUser.id);
           await fetchTrades(currentUser.id);
+          await fetchHoldings(currentUser.id); // Fetch holdings on user change
           await fetchWatchlist(currentUser.id);
           setLoadingData(false);
         } else {
           setCapital(10000); // Reset to initial capital for logged-out state
           setTrades([]);
+          setHoldings({}); // Clear holdings on logout
           setWatchListSymbols([]);
           setLivePrices({});
           setUser(null);
@@ -434,6 +650,7 @@ export const TradingDataProvider = ({ children }) => {
       if (currentUser) {
         await fetchCapital(currentUser.id);
         await fetchTrades(currentUser.id);
+        await fetchHoldings(currentUser.id); // Initial fetch of holdings
         await fetchWatchlist(currentUser.id);
       }
       setLoadingData(false);
@@ -445,17 +662,16 @@ export const TradingDataProvider = ({ children }) => {
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [fetchCapital, fetchTrades, fetchAvailableSymbols, fetchWatchlist]); // Dependencies for initial data load
+  }, [fetchCapital, fetchTrades, fetchHoldings, fetchAvailableSymbols, fetchWatchlist]); // Dependencies for initial data load
 
   // --- Effect to fetch live prices for all relevant symbols ---
   useEffect(() => {
-    // Combine symbols from trades and watchlist
+    // Combine symbols from trades, watchlist, and holdings
     const allSymbols = [
       ...new Set([
         ...trades.map((t) => t.symbol),
         ...watchListSymbols,
-        // If you want to persist prices for already fetched symbols, add Object.keys(livePrices)
-        // ...Object.keys(livePrices)
+        ...Object.keys(holdings), // Include symbols from holdings
       ])
     ].filter(Boolean); // Filter out any null/undefined/empty symbols
 
@@ -470,7 +686,7 @@ export const TradingDataProvider = ({ children }) => {
 
       return () => clearInterval(interval); // Cleanup on unmount or dependency change
     }
-  }, [trades, watchListSymbols, fetchLivePrices]); // Re-run if trades or watchlist change
+  }, [trades, watchListSymbols, holdings, fetchLivePrices]); // Re-run if trades, watchlist, or holdings change
 
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo(
@@ -487,14 +703,13 @@ export const TradingDataProvider = ({ children }) => {
       fetchLivePrices,
       calculatePnL,
       calculateTotalPortfolioValue,
-      // FINNHUB_API_KEY, // No longer need to pass these through context value, as they are exported directly
-      // CURRENCY_SYMBOL,
-      // isInvalidApiKey,
       loadingData,
       removeTrade,
+      addTrade, // Expose addTrade function
       watchListSymbols,
       addToWatchlist,
       removeFromWatchlist,
+      holdings: Object.values(holdings), // Provide holdings as an array for easier consumption
     }),
     [
       user,
@@ -511,11 +726,11 @@ export const TradingDataProvider = ({ children }) => {
       calculateTotalPortfolioValue,
       loadingData,
       removeTrade,
+      addTrade,
       addToWatchlist,
       removeFromWatchlist,
       watchListSymbols,
-      // Removed FINNHUB_API_KEY, CURRENCY_SYMBOL, isInvalidApiKey from dependencies
-      // because they are now stable constants exported directly.
+      holdings,
     ]
   );
 
