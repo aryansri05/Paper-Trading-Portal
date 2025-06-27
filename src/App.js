@@ -1,19 +1,16 @@
-// src/App.js
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import { useTradingData } from '../TradingDataContext'; // Go up one directory
-// Import your components
-import Auth from './components/Auth.jsx'; // Add .jsx extension
-// Check if Account.js exists in src/pages/ or needs to be created
-import Account from './pages/Account'; // Assuming it will be in src/pages/
-import Dashboard from './components/Dashboard';
-// Check if Navbar.js exists or needs to be created
-import Navbar from './components/Navbar'; // Assuming it will be in src/components/
-import StockDetailPage from './pages/stockdetailspage.js'; // Ensure casing matches exactly, and add .js extension
-// Check if WatchlistPage.js exists in src/pages/ or needs to be created
-import WatchlistPage from './pages/WatchlistPage'; // Assuming it will be in src/pages/
+import { TradingDataProvider } from './TradingDataContext';
 
+// Import your components
+import Auth from './components/Auth.jsx';
+import Account from './pages/Account.js';
+import Dashboard from './components/Dashboard.js';
+import Navbar from './components/Navbar.js';
+import StockDetailPage from './pages/StockDetailsPage.js';
+import WatchlistPage from './pages/WatchlistPage.js';
+import AboutDeveloper from './pages/AboutDeveloper.js'; // <--- ADD THIS LINE: Import the AboutDeveloper component
 
 function App() {
   const [session, setSession] = useState(null);
@@ -46,13 +43,24 @@ function App() {
 
   return (
     <Router>
-      <TradingDataProvider>
-        {session && <Navbar session={session} />}
+      {/* Navbar is rendered unconditionally so it's always visible for public pages too */}
+      <Navbar session={session} />
+      
+      {/* TradingDataProvider wraps only the content that needs the trading context */}
+      <TradingDataProvider> 
         <main className="container">
           <Routes>
+            {/* PUBLIC ROUTES (accessible without requiring a session) */}
+            <Route path="/about-developer" element={<AboutDeveloper />} /> {/* <--- ADD THIS ROUTE */}
+
+            {/* CONDITIONAL ROUTES BASED ON SESSION */}
             {!session ? (
+              // If no session, and the path is not a public one (like /about-developer),
+              // it defaults to the Auth component. The "about-developer" route above
+              // will catch that path first if it matches.
               <Route path="*" element={<Auth />} />
             ) : (
+              // If logged in (session exists), show these authenticated routes
               <>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/dashboard" element={<Dashboard />} />
@@ -60,6 +68,7 @@ function App() {
                 <Route path="/stock/:symbol" element={<StockDetailPage />} />
                 <Route path="/watchlist" element={<WatchlistPage />} />
 
+                {/* Fallback for any other undefined path when authenticated, redirects to dashboard */}
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </>
             )}

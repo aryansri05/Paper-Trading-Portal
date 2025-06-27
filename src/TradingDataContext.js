@@ -347,9 +347,7 @@ export const TradingDataProvider = ({ children }) => {
 
   // --- Calculate PnL and Holdings (now uses `holdings` state directly) ---
   const calculatePnL = useCallback(() => {
-    let totalRealizedPnl = 0; // This will still need to be calculated from trades
-    // For now, let's keep it simple and focus on unrealized PnL from the new holdings structure.
-    // Realized PnL will be derived from trade history, similar to before.
+    let totalRealizedPnl = 0;
 
     let currentHoldingsCalculated = {};
     Object.values(holdings).forEach((holding) => {
@@ -364,25 +362,22 @@ export const TradingDataProvider = ({ children }) => {
         };
     });
 
-    // Calculate totalUnrealizedPnl from currentHoldingsCalculated
     const totalUnrealizedPnl = Object.values(currentHoldingsCalculated).reduce((sum, holding) => {
         return sum + parseFloat(holding.unrealizedPnl || 0);
     }, 0);
 
-    // Re-calculating realized PnL from trades is still necessary if trades are deleted.
-    // However, if trades are only added/modified, and holdings are the source of truth for current positions,
-    // realized PnL needs a more robust calculation method.
-    // For simplicity for now, we'll keep the existing realized PnL calculation logic that iterates through trades.
     let realizedPnlFromTrades = 0;
-    const tempHoldingsForRealizedPnl = {}; // Temporary holdings to calculate realized PnL from trades
-    trades.slice().reverse().forEach((trade) => { // Iterate from oldest to newest for correct PnL calculation
+    // Declare tempHoldingsForRealizedPnl before its use
+    const tempHoldingsForRealizedPnl = {}; 
+    trades.slice().reverse().forEach((trade) => {
         if (!tempHoldingsForRealizedPnl[trade.symbol]) {
             tempHoldingsForRealizedPnl[trade.symbol] = { netQty: 0, totalCost: 0, avgBuyPrice: 0 };
         }
 
         if (trade.type === "buy") {
             tempHoldingsForRealizedPnl[trade.symbol].totalCost += trade.quantity * trade.price;
-            tempHoldingsForRealizedPyl[trade.symbol].netQty += trade.quantity;
+            // CORRECTED TYPO HERE: was tempHoldingsForRealizedPyl
+            tempHoldingsForRealizedPnl[trade.symbol].netQty += trade.quantity; 
             tempHoldingsForRealizedPnl[trade.symbol].avgBuyPrice =
                 tempHoldingsForRealizedPnl[trade.symbol].netQty > 0
                     ? tempHoldingsForRealizedPnl[trade.symbol].totalCost / tempHoldingsForRealizedPnl[trade.symbol].netQty

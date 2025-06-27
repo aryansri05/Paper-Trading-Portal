@@ -1,0 +1,516 @@
+/* src/TradingDashboard.css */
+
+:root {
+    --dashboard-bg: #1a1a1a; /* Dark background for the overall dashboard */
+    --panel-bg: #2a2a2a;    /* Slightly lighter background for panels */
+    --text-color-light: #f0f0f0; /* Light text for readability */
+    --text-color-muted: #a0a0a0; /* Muted text for labels */
+    --border-color-dark: #3a3a3a; /* Darker border for separation */
+    --shadow-dark: rgba(0, 0, 0, 0.4); /* Darker shadow for depth */
+
+    --primary-blue: #007bff;
+    --accent-teal: #17a2b8;
+    --success-green: #28a745;
+    --danger-red: #dc3545;
+
+    --button-bg-dark: #444;
+    --button-hover-dark: #555;
+}
+
+.trading-dashboard-container {
+    background-color: var(--dashboard-bg);
+    color: var(--text-color-light);
+    padding: 20px;
+    min-height: 100vh; /* Ensure it takes full height */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Modern font */
+}
+
+.dashboard-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.welcome-message {
+    font-size: 2.5em;
+    color: var(--primary-blue);
+    margin: 0;
+    text-shadow: 0 0 5px rgba(0, 123, 255, 0.5); /* Subtle glow */
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); /* Flexible columns */
+    gap: 20px; /* Spacing between panels */
+    max-width: 1400px; /* Limit overall width */
+    margin: 0 auto; /* Center the grid */
+}
+
+.dashboard-panel {
+    background-color: var(--panel-bg);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 5px 15px var(--shadow-dark);
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-title {
+    color: var(--text-color-light);
+    font-size: 1.5em;
+    margin-top: 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid var(--border-color-dark);
+    padding-bottom: 10px;
+}
+
+/* Specific Panel Sizing for Layout (Investopedia-like) */
+.account-value-panel {
+    grid-column: span 1; /* Takes 1 column */
+    min-height: 250px; /* Example height */
+}
+
+.performance-chart-panel {
+    grid-column: span 2; /* Takes 2 columns */
+    min-height: 250px; /* Example height */
+    position: relative; /* For button positioning */
+}
+
+.trade-panel {
+    grid-column: span 1; /* Takes 1 column */
+}
+
+.holdings-panel {
+    grid-column: span 2; /* Takes 2 columns */
+}
+
+.trade-history-panel {
+    grid-column: span 2; /* Takes 2 columns */
+}
+
+/* Account Value Panel Styling */
+.account-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border-color-dark);
+}
+
+.summary-item:last-child {
+    border-bottom: none;
+}
+
+.summary-item .label {
+    color: var(--text-color-muted);
+    font-size: 0.9em;
+}
+
+.summary-item .value {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+/* Performance Chart Panel Styling */
+.chart-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%; /* Fill panel height */
+    color: var(--text-color-muted);
+    font-style: italic;
+    text-align: center;
+}
+
+.button-group-top-right {
+    position: absolute; /* Position relative to .performance-chart-panel */
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 5px;
+    z-index: 10;
+}
+
+.performance-btn {
+    background-color: var(--button-bg-dark);
+    color: var(--text-color-light);
+    border: 1px solid var(--border-color-dark);
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.performance-btn:hover {
+    background-color: var(--button-hover-dark);
+    border-color: var(--primary-blue);
+}
+
+.performance-btn.active {
+    background-color: var(--primary-blue);
+    border-color: var(--primary-blue);
+    color: #fff;
+}
+
+.btn-performance-history {
+    background-color: var(--accent-teal);
+    color: #fff;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 15px;
+    font-size: 0.9em;
+    transition: background-color 0.2s;
+}
+
+.btn-performance-history:hover {
+    background-color: darken(var(--accent-teal), 10%); /* Requires Sass or manual calculation */
+    background-color: #117a8b; /* Slightly darker teal */
+}
+
+
+/* Trade Panel Styling (Search & Order) */
+.stock-search-form {
+    display: flex;
+    margin-bottom: 15px;
+    gap: 10px;
+}
+
+.search-input {
+    flex-grow: 1;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid var(--border-color-dark);
+    background-color: #333;
+    color: var(--text-color-light);
+    font-size: 1em;
+}
+
+.search-input::placeholder {
+    color: var(--text-color-muted);
+}
+
+.search-button {
+    background-color: var(--primary-blue);
+    color: #fff;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s;
+}
+
+.search-button:hover {
+    background-color: darken(var(--primary-blue), 10%);
+    background-color: #0056b3;
+}
+
+.selected-stock-details {
+    background-color: #333;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+    border: 1px solid var(--border-color-dark);
+}
+
+.selected-stock-details h3 {
+    margin-top: 0;
+    color: var(--text-color-light);
+    font-size: 1.2em;
+    border-bottom: 1px dashed var(--border-color-dark);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.selected-stock-details p {
+    margin-bottom: 5px;
+    color: var(--text-color-muted);
+}
+
+.price-change-detail {
+    font-weight: bold;
+}
+
+.trade-actions {
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.buy-button, .sell-button, .view-details-button, .add-watchlist-button, .remove-watchlist-button {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.2s;
+    color: #fff;
+}
+
+.buy-button, .buy-button-small {
+    background-color: var(--success-green);
+}
+.buy-button:hover, .buy-button-small:hover {
+    background-color: darken(var(--success-green), 10%);
+    background-color: #1e7e34;
+}
+
+.sell-button, .sell-button-small {
+    background-color: var(--danger-red);
+}
+.sell-button:hover, .sell-button-small:hover {
+    background-color: darken(var(--danger-red), 10%);
+    background-color: #bd2130;
+}
+
+.view-details-button {
+    background-color: var(--primary-blue);
+}
+.view-details-button:hover {
+    background-color: darken(var(--primary-blue), 10%);
+    background-color: #0056b3;
+}
+
+.add-watchlist-button {
+    background-color: #6c757d; /* Gray */
+}
+.add-watchlist-button:hover {
+    background-color: #5a6268;
+}
+
+.remove-watchlist-button {
+    background-color: #ffc107; /* Warning yellow */
+    color: #333; /* Dark text for yellow button */
+}
+.remove-watchlist-button:hover {
+    background-color: #e0a800;
+}
+
+/* Modal Styling */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: var(--panel-bg);
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 8px 25px var(--shadow-dark);
+    max-width: 400px;
+    width: 90%;
+    color: var(--text-color-light);
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    color: var(--primary-blue);
+    border-bottom: 1px dashed var(--border-color-dark);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.modal-content .form-group {
+    margin-bottom: 15px;
+}
+
+.modal-content label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-color-muted);
+}
+
+.modal-content input[type="number"],
+.modal-content select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid var(--border-color-dark);
+    background-color: #333;
+    color: var(--text-color-light);
+    font-size: 1em;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.confirm-trade-button, .cancel-button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s;
+    color: #fff;
+}
+
+.confirm-trade-button {
+    background-color: var(--primary-blue);
+}
+.confirm-trade-button:hover {
+    background-color: #0056b3;
+}
+
+.cancel-button {
+    background-color: #6c757d;
+}
+.cancel-button:hover {
+    background-color: #5a6268;
+}
+
+/* Holdings Panel Styling */
+.tab-buttons {
+    display: flex;
+    margin-bottom: 15px;
+    border-bottom: 1px solid var(--border-color-dark);
+}
+
+.tab-button {
+    background-color: transparent;
+    border: none;
+    padding: 10px 15px;
+    color: var(--text-color-muted);
+    font-size: 1em;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-bottom-color 0.2s;
+    margin-right: 10px;
+}
+
+.tab-button:hover {
+    color: var(--text-color-light);
+}
+
+.tab-button.active {
+    color: var(--primary-blue);
+    border-bottom-color: var(--primary-blue);
+    font-weight: bold;
+}
+
+.holdings-table-container, .trade-history-table-container {
+    overflow-x: auto; /* Allow horizontal scrolling for tables */
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+table th, table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color-dark);
+    font-size: 0.9em;
+}
+
+table th {
+    color: var(--text-color-muted);
+    font-weight: normal;
+    text-transform: uppercase;
+    background-color: #3a3a3a; /* Slightly darker header background */
+}
+
+table tr:hover {
+    background-color: #333; /* Hover effect for rows */
+}
+
+table td {
+    color: var(--text-color-light);
+}
+
+.sell-button-small, .buy-button-small, .remove-trade-button {
+    padding: 5px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: background-color 0.2s;
+    color: #fff;
+    margin-right: 5px; /* Spacing between buttons */
+}
+
+.remove-trade-button {
+    background-color: #dc3545; /* Red for remove */
+}
+.remove-trade-button:hover {
+    background-color: #bd2130;
+}
+
+/* General Messages */
+.message {
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.message.error-message { /* Overrides default .error-message */
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.message.info-message {
+    background-color: #e2e3e5;
+    color: #383d41;
+    border: 1px solid #d6d8db;
+}
+
+/* Text Colors (for P&L) */
+.text-green { color: var(--success-green); }
+.text-red { color: var(--danger-red); }
+
+/* Loading State */
+.dashboard-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 500px;
+    color: var(--text-color-muted);
+    font-size: 1.2em;
+}
+
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-left-color: var(--primary-blue);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

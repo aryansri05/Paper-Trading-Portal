@@ -1,58 +1,56 @@
-// src/TradingDashboard.js
-import React, { useState, useCallback, useMemo } from 'react'; // Removed useEffect if not used
-import axios from 'axios'; // ADDED: Import axios
-import { supabase } from '../supabaseClient'; // Go up one directory
-import { useTradingData, isInvalidApiKey, FINNHUB_API_KEY, CURRENCY_SYMBOL } from './TradingDataContext';
-import { useNavigate } from 'react-router-dom'; // CORRECTED: useNavigate for react-router-dom v6
-// import StockChart from './components/StockChart'; // Commented out as it's not used in this component's JSX
+// src/components/Dashboard.js
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'; // Keep useRef for other elements if needed, but not for datalist
+import axios from 'axios';
+import { useTradingData, isInvalidApiKey, FINNHUB_API_KEY, CURRENCY_SYMBOL } from '../TradingDataContext';
+import { useNavigate } from 'react-router-dom';
 
-// Import a CSS file for the new dashboard styles
-import '../TradingDashboard.css'; // Go up one directory
+import './Dashboard.css'; // Assuming you have or will create this file
 
-function TradingDashboard() {
+function Dashboard() {
     const {
         user,
         capital,
-        setCapital,
         trades,
         livePrices,
-        availableSymbols,
-        // symbolError, // No longer used directly in this UI
-        // setSymbolError, // No longer used directly in this UI
-        fetchTrades,
+        availableSymbols, // <--- We'll use this directly for the datalist
         fetchLivePrices,
         calculatePnL,
         calculateTotalPortfolioValue,
         loadingData,
-        removeTrade,
         watchListSymbols,
         addToWatchlist,
         removeFromWatchlist,
+        holdings: contextHoldings,
+        addTrade: contextAddTrade,
+        removeTrade: contextRemoveTrade,
     } = useTradingData();
 
-    const navigate = useNavigate(); // CORRECTED: useNavigate hook
+    const navigate = useNavigate();
 
+    // --- State for Stock Search ---
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSymbolDetails, setSelectedSymbolDetails] = useState(null);
     const [stockSearchError, setStockSearchError] = useState(null);
+
+    // No need for filteredSuggestions, showSuggestions, searchWrapperRef for datalist
+
     const [quantity, setQuantity] = useState(0);
     const [orderType, setOrderType] = useState('market'); // market, limit, stop
     const [limitPrice, setLimitPrice] = useState(0);
     const [stopPrice, setStopPrice] = useState(0);
     const [tradeType, setTradeType] = useState('buy'); // buy, sell
-    const [tradeMessage, setTradeMessage] = useState({ text: '', type: '' }); // success, error
+    const [tradeMessage, setTradeMessage] = useState({ text: '', type: '' });
     const [showBuySellModal, setShowBuySellModal] = useState(false);
     const [modalSymbol, setModalSymbol] = useState('');
     const [modalPrice, setModalPrice] = useState(0);
-    const [currentHoldingsTab, setCurrentHoldingsTab] = useState('stocks'); // 'stocks', 'options'
+    const [currentHoldingsTab, setCurrentHoldingsTab] = useState('stocks');
 
-    const { holdings, totalRealizedPnl, totalUnrealizedPnl } = useMemo(() => {
-        // Corrected dependencies for useMemo
+    const { holdings } = useMemo(() => {
         if (!loadingData) {
             return calculatePnL();
         }
         return { holdings: [], totalRealizedPnl: '0.00', totalUnrealizedPnl: '0.00' };
-    }, [loadingData, calculatePnL]); // Removed trades and livePrices from here as calculatePnL already depends on them
+    }, [loadingData, calculatePnL]);
 
     // --- Price Change Calculation ---
     const calculatePriceChange = useCallback((symbol) => {
@@ -64,51 +62,35 @@ function TradingDashboard() {
             return { change: change.toFixed(2), percentageChange: percentageChange.toFixed(2) };
         }
         return { change: '0.00', percentageChange: '0.00' };
-    }, [holdings, livePrices]); // Added livePrices to dependencies
+    }, [holdings, livePrices]);
 
     // Function to calculate today's change for the entire portfolio
     const calculateTodaysChange = useCallback(() => {
-        // This is a simplified calculation. For a true "today's change",
-        // you'd need the previous day's closing prices for all holdings.
-        // For demonstration, we'll use (current price - avg buy price) * quantity
-        // This is effectively unrealized PnL, not "today's change" from market open.
-        // To accurately calculate "Today's Change", you'd need the change from the
-        // market's open price of the current day for each stock you hold.
-        // Finnhub quote endpoint gives 'pc' (previous close), but not daily open.
-        // Alpha Vantage daily adjusted endpoint has '6. volume' and '5. adjusted close'.
-        // For this example, we'll keep it as unrealized PnL contribution for active holdings.
-
-        // This entire block about `totalChange`, `totalPortfolioValueStartOfDay`, `symbolsToFetchPrevClose`
-        // was commented out/redundant and part of a more complex 'Today's Change' calculation.
-        // It's removed for clarity as the current implementation uses total unrealized PnL.
-
-        const initialReferenceValue = 10000; // Your starting capital
+        const initialReferenceValue = 10000;
         const currentTotalValue = parseFloat(calculateTotalPortfolioValue());
         const totalChangeAbsolute = currentTotalValue - initialReferenceValue;
         const totalChangePercentage = (totalChangeAbsolute / initialReferenceValue) * 100;
-
 
         return {
             change: totalChangeAbsolute.toFixed(2),
             percentageChange: totalChangePercentage.toFixed(2)
         };
-    }, [calculateTotalPortfolioValue]); // Removed all other dependencies as they are not used in this simplified calculation.
+    }, [calculateTotalPortfolioValue]);
 
     const { change: todaysChangeAbsolute, percentageChange: todaysChangePercentage } = calculateTodaysChange();
     const isPositiveChange = todaysChangeAbsolute >= 0;
 
     // --- Search functionality (Finnhub for symbols) ---
+    // handleSearchChange remains simple
     const handleSearchChange = (e) => {
-        setSearchTerm(e.target.value);
-        setStockSearchError(null);
+        setSearchTerm(e.target.value.toUpperCase()); // Keep symbol uppercase
+        setStockSearchError(null); // Clear previous search errors
+        setSelectedSymbolDetails(null); // Clear details when typing
     };
 
-    const handleSearchSubmit = useCallback(async (e) => {
-        e.preventDefault();
-        setStockSearchError(null);
-        setSelectedSymbolDetails(null);
-
-        if (!searchTerm.trim()) {
+    // New helper function to fetch stock details (extracted from handleSearchSubmit)
+    const triggerSymbolDetailsFetch = useCallback(async (symbolToFetch) => {
+        if (!symbolToFetch.trim()) {
             setStockSearchError("Please enter a stock symbol.");
             return;
         }
@@ -117,11 +99,12 @@ function TradingDashboard() {
             return;
         }
 
-        const symbol = searchTerm.toUpperCase();
+        const symbol = symbolToFetch.toUpperCase();
 
-        // Check if symbol exists in availableSymbols
+        // It's still good to validate against availableSymbols for better error messages
         if (!availableSymbols.includes(symbol)) {
             setStockSearchError(`'${symbol}' is not a valid US stock symbol or not available via Finnhub free tier.`);
+            setSelectedSymbolDetails(null);
             return;
         }
 
@@ -150,16 +133,28 @@ function TradingDashboard() {
                     ipo: profile.ipo,
                     weburl: profile.weburl
                 });
-                // Fetch live price for the selected symbol immediately
                 fetchLivePrices([symbol]);
             } else {
                 setStockSearchError(`No real-time data found for ${symbol}. It might be delisted or not available on free tier.`);
+                setSelectedSymbolDetails(null);
             }
         } catch (error) {
             console.error("Error fetching stock details:", error);
-            setStockSearchError(`Failed to fetch data for ${symbol}. Please check the symbol and your API key.`);
+            if (error.response && error.response.status === 429) {
+                 setStockSearchError("You've hit Finnhub API rate limits. Please wait a moment and try again.");
+            } else {
+                 setStockSearchError(`Failed to fetch data for ${symbol}. Please check the symbol and your API key.`);
+            }
+            setSelectedSymbolDetails(null);
         }
-    }, [searchTerm, availableSymbols, fetchLivePrices]); // Corrected dependencies, removed FINNHUB_API_KEY and isInvalidApiKey as they are constants
+    }, [availableSymbols, fetchLivePrices, FINNHUB_API_KEY, isInvalidApiKey]);
+
+    // handleSearchSubmit will now trigger the details fetch for the current searchTerm
+    const handleSearchSubmit = useCallback((e) => {
+        e.preventDefault();
+        triggerSymbolDetailsFetch(searchTerm);
+    }, [searchTerm, triggerSymbolDetailsFetch]);
+
 
     // --- Trade Execution ---
     const handleTrade = async () => {
@@ -167,52 +162,26 @@ function TradingDashboard() {
             setTradeMessage({ text: 'Please log in to place a trade.', type: 'error' });
             return;
         }
-        if (!modalSymbol || quantity <= 0 || !modalPrice) { // Changed quantity to be non-zero
+        if (!modalSymbol || quantity <= 0 || !modalPrice) {
             setTradeMessage({ text: 'Please enter a valid symbol, quantity, and price.', type: 'error' });
             return;
         }
 
-        const cost = quantity * modalPrice;
-        let newCapital = capital;
-        let tradeRecord = {
-            user_id: user.id,
-            symbol: modalSymbol,
-            quantity: quantity,
-            price: modalPrice,
-            type: tradeType,
-            created_at: new Date().toISOString()
-        };
-
         try {
-            if (tradeType === 'buy') {
-                if (cost > capital) {
-                    setTradeMessage({ text: 'Insufficient capital to place this trade.', type: 'error' });
-                    return;
-                }
-                newCapital -= cost;
-            } else { // sell
-                const currentHolding = holdings.find(h => h.symbol === modalSymbol);
-                if (!currentHolding || currentHolding.netQty < quantity) {
-                    setTradeMessage({ text: `Insufficient shares of ${modalSymbol} to sell. You have ${currentHolding?.netQty || 0}.`, type: 'error' });
-                    return;
-                }
-                newCapital += cost;
-            }
+            await contextAddTrade({
+                symbol: modalSymbol,
+                quantity: quantity,
+                price: modalPrice,
+                type: tradeType,
+            });
 
-            const { error: tradeError } = await supabase.from('trades').insert([tradeRecord]);
-            if (tradeError) throw tradeError;
-
-            await setCapital(newCapital); // This updates both state and DB
-            await fetchTrades(user.id); // Refresh trades
             setTradeMessage({ text: `${modalSymbol} ${tradeType === 'buy' ? 'bought' : 'sold'} successfully!`, type: 'success' });
 
-            // Reset form fields
             setQuantity(0);
             setShowBuySellModal(false);
 
         } catch (error) {
             console.error("Error placing trade:", error);
-            // CORRECTED: Template literal had a stray backtick.
             setTradeMessage({ text: `Failed to place trade: ${error.message}`, type: 'error' });
         }
     };
@@ -221,14 +190,15 @@ function TradingDashboard() {
         setModalSymbol(symbol);
         setModalPrice(price);
         setTradeType(type);
+        setQuantity(0);
         setShowBuySellModal(true);
-        setTradeMessage({ text: '', type: '' }); // Clear previous messages
+        setTradeMessage({ text: '', type: '' });
     };
 
     const handleRemoveTrade = async (tradeId) => {
         if (window.confirm("Are you sure you want to remove this trade? This will adjust your capital and holdings.")) {
             try {
-                await removeTrade({ id: tradeId });
+                await contextRemoveTrade({ id: tradeId });
                 setTradeMessage({ text: 'Trade successfully removed and capital/holdings adjusted.', type: 'success' });
             } catch (error) {
                 setTradeMessage({ text: `Failed to remove trade: ${error.message}`, type: 'error' });
@@ -236,17 +206,8 @@ function TradingDashboard() {
         }
     };
 
-    // Derived State for PnL and Holdings display
-    const { totalRealizedPnl: pnlRealized, totalUnrealizedPnl: pnlUnrealized } = useMemo(() => {
-        if (!loadingData && trades.length > 0) {
-            return calculatePnL();
-        }
-        return { totalRealizedPnl: '0.00', totalUnrealizedPnl: '0.00' };
-    }, [loadingData, trades.length, calculatePnL]); // Corrected dependencies
-
-
     const currentPortfolioValue = parseFloat(calculateTotalPortfolioValue());
-    const initialTotalCapital = 10000; // Your defined initial capital
+    const initialTotalCapital = 10000;
     const netProfitLoss = currentPortfolioValue - initialTotalCapital;
     const netProfitLossPercentage = (netProfitLoss / initialTotalCapital) * 100;
     const isNetProfit = netProfitLoss >= 0;
@@ -262,8 +223,6 @@ function TradingDashboard() {
 
     return (
         <div className="trading-dashboard-container">
-            {/* Top Navigation (assuming it's handled by App.js or a Navbar component) */}
-
             <div className="dashboard-header">
                 {user ? (
                     <h1 className="welcome-message">Welcome, {user.email}!</h1>
@@ -308,15 +267,9 @@ function TradingDashboard() {
                 {/* Performance Chart Panel (Top Right) */}
                 <div className="dashboard-panel performance-chart-panel">
                     <h2 className="panel-title">Performance History</h2>
-                    {/* This would ideally be a chart tracking portfolio value over time.
-                        For now, we'll use StockChart as a placeholder, perhaps for a chosen stock's performance or a custom index.
-                        You'll need to create a dedicated 'PortfolioPerformanceChart' component for actual portfolio history.
-                    */}
                     <div className="chart-placeholder">
-                        {/* Placeholder for future portfolio performance chart */}
                         <p>Your performance chart will update daily starting tomorrow.</p>
                         <div className="button-group-top-right">
-                            {/* Example buttons for performance chart, if implemented */}
                             <button className="performance-btn active">1W</button>
                             <button className="performance-btn">1M</button>
                             <button className="performance-btn">3M</button>
@@ -332,16 +285,27 @@ function TradingDashboard() {
                 {/* Trade Execution Panel (Search & Place Order - left side, below Account Value) */}
                 <div className="dashboard-panel trade-panel">
                     <h2 className="panel-title">Place Order</h2>
+                    {/* Removed stock-search-autocomplete-container ref={searchWrapperRef} */}
                     <form onSubmit={handleSearchSubmit} className="stock-search-form">
                         <input
                             type="text"
                             placeholder="Enter stock symbol (e.g., AAPL)"
                             value={searchTerm}
                             onChange={handleSearchChange}
+                            list="available-symbols-datalist" // <--- KEY CHANGE: Link to datalist
                             className="search-input"
                         />
                         <button type="submit" className="search-button">Search</button>
                     </form>
+
+                    {/* --- DATALIST ELEMENT --- */}
+                    <datalist id="available-symbols-datalist">
+                        {availableSymbols.map((symbol) => (
+                            <option key={symbol} value={symbol} />
+                        ))}
+                    </datalist>
+                    {/* --- END DATALIST ELEMENT --- */}
+
                     {stockSearchError && <p className="error-message">{stockSearchError}</p>}
 
                     {selectedSymbolDetails && (
@@ -413,7 +377,6 @@ function TradingDashboard() {
                                         onChange={(e) => setOrderType(e.target.value)}
                                     >
                                         <option value="market">Market</option>
-                                        {/* Limit and Stop orders are not fully implemented in logic, but UI can be present */}
                                         <option value="limit">Limit</option>
                                         <option value="stop">Stop</option>
                                     </select>
@@ -499,7 +462,6 @@ function TradingDashboard() {
                                             return (
                                                 <tr key={holding.symbol}>
                                                     <td>{holding.symbol}</td>
-                                                    {/* Company name needs to be fetched for all holdings, or passed down */}
                                                     <td>{selectedSymbolDetails?.symbol === holding.symbol ? selectedSymbolDetails?.companyName : 'N/A'}</td>
                                                     <td>{CURRENCY_SYMBOL}{currentPrice.toFixed(2)}</td>
                                                     <td className={isHoldingPositiveChange ? 'text-green' : 'text-red'}>
@@ -586,4 +548,4 @@ function TradingDashboard() {
     );
 }
 
-export default TradingDashboard;
+export default Dashboard;
