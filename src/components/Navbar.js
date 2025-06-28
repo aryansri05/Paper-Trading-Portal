@@ -4,6 +4,9 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
+// --- ADD THIS IMPORT LINE ---
+import logoImage from '../images/trading_portal_logo.svg'; // Correct path from Navbar.js to src/images/
+
 const Navbar = ({ session }) => {
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -12,8 +15,9 @@ const Navbar = ({ session }) => {
     return (
         <nav className="navbar-container">
             <div className="navbar-left">
-                {/* Updated logo source to SVG */}
-                <img src="/images/trading-portal-logo.svg" alt="Paper Trading Logo" className="navbar-logo" />
+                {/* --- UPDATE THIS LINE --- */}
+                {/* Use the imported variable directly in src */}
+                <img src={logoImage} alt="Paper Trading Logo" className="navbar-logo" /> 
                 
                 <ul className="nav-links">
                     <li><Link to="/dashboard">Dashboard</Link></li>
